@@ -1,0 +1,12 @@
+d::0:application/unknown
+d:data:0:application/unknown
+i:data/libgdx.png:54931:image/png
+d:models:0:application/unknown
+b:models/cube.fbx:81784:application/unknown
+b:models/cube.g3db:7952:application/unknown
+t:models/cube.g3dj:16273:application/unknown
+i:models/tex.png:776:image/png
+t:com/badlogic/gdx/graphics/g3d/shaders/default.fragment.glsl:3032:application/unknown
+t:com/badlogic/gdx/graphics/g3d/shaders/default.vertex.glsl:7973:application/unknown
+t:com/badlogic/gdx/utils/arial-15.fnt:21743:application/unknown
+i:com/badlogic/gdx/utils/arial-15.png:21814:image/png
