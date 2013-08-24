@@ -19,6 +19,7 @@ import com.badlogic.gdx.graphics.g3d.ModelInstance;
 import com.badlogic.gdx.graphics.g3d.decals.Decal;
 import com.badlogic.gdx.graphics.g3d.decals.DecalBatch;
 import com.badlogic.gdx.graphics.g3d.utils.AnimationController;
+import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
 import com.westernarc.objects.Player;
 
@@ -64,7 +65,7 @@ public class Tts implements ApplicationListener {
 		spriteBatch = new SpriteBatch();
 		
 		cam = new PerspectiveCamera(45, var.w, var.h);
-		cam.position.set(0f, 20f, -50f);
+		cam.position.set(0, -19, 8);
 		cam.lookAt(0,0,0);
 		cam.near = 0.1f;
 		cam.far = 300f;
@@ -110,6 +111,7 @@ public class Tts implements ApplicationListener {
 	@Override
 	public void render() {
 		var.tpf = Gdx.graphics.getDeltaTime();
+		cam.update();
 		
 		if(var.state == var.STATES.LOAD) {
 			if(var.assets.update()) {
@@ -117,12 +119,10 @@ public class Tts implements ApplicationListener {
 				var.state = var.STATES.MENU;
 			}
 		} else {
+			
 			Gdx.gl.glViewport(0,0,var.w,var.h);
 			Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
 			
-			if(var.state == var.STATES.MENU) {
-				stateMenu.render(var.tpf);
-			}
 			
 			animController.update(Gdx.graphics.getDeltaTime());
 			 
@@ -132,6 +132,10 @@ public class Tts implements ApplicationListener {
 				modelBatch.render(instance);
 			}
 			modelBatch.end();
+			
+			if(var.state == var.STATES.MENU) {
+				stateMenu.render(var.tpf);
+			}
 		}
 		
 		if(isKeyPressed(Keys.LEFT)) {
@@ -162,7 +166,12 @@ public class Tts implements ApplicationListener {
 	private boolean isKeyPressed(int key){
 		return Gdx.input.isKeyPressed(key);
 	}
-	
+	class GAME {
+		 
+		public void render(float tpf) {
+			
+		}
+	}
 	class MENU {
 		float fltTitleFadeRate = 0.1f;
 		float fltTitleAlpha = 0f;
@@ -170,11 +179,21 @@ public class Tts implements ApplicationListener {
 		boolean blnShowTitle;
 		boolean blnTitleCompleted;
 		
+		Vector3 vecCamMenuPos = new Vector3(0,-17,7);
+		Vector3 vecCamGamePos = new Vector3(0, 20, -50);
+		
+		float fltCamLerpValue;
+		float fltCamLerpMenuRate = 0.001f;
+		float fltCamLerpGameRate = 0.001f;
+		
 		public void init() {
 			fltTitleAlpha = 0;
+			fltCamLerpValue = 0;
+			
 			blnShowTitle = true;
 		}
 		public void render(float tpf) {
+			
 			if(blnShowTitle) {
 				if(fltTitleAlpha + fltTitleFadeRate < 1) {
 					fltTitleAlpha += fltTitleFadeRate;
@@ -182,13 +201,26 @@ public class Tts implements ApplicationListener {
 					fltTitleAlpha = 1;
 				}
 				sprite.setColor(1,1,1,fltTitleAlpha);
+				
+				if(fltCamLerpValue + fltCamLerpMenuRate < 1) fltCamLerpValue += fltCamLerpMenuRate; else fltCamLerpValue = 1;
+				cam.position.lerp(vecCamMenuPos, fltCamLerpValue);
+				cam.lookAt(0,-10,4);
+				//cam.position.add(1,0,0);
 			} else {
 				if(fltTitleAlpha - fltTitleFadeRate > 0) {
 					fltTitleAlpha -= fltTitleFadeRate;
 				} else {
 					fltTitleAlpha = 0;
 				}
+				if(blnShowTitle = false) {
+					var.state = var.STATES.GAME;
+				}
 				sprite.setColor(1,1,1,fltTitleAlpha);
+				
+				if(fltCamLerpValue + fltCamLerpGameRate < 1) fltCamLerpValue += fltCamLerpGameRate; else fltCamLerpValue = 1;
+				cam.position.lerp(vecCamGamePos, fltCamLerpValue);
+				cam.up.set(Vector3.Y);
+				cam.lookAt(0,0,0);
 			}
 			spriteBatch.begin();
 			sprite.draw(spriteBatch);
@@ -196,10 +228,7 @@ public class Tts implements ApplicationListener {
 			
 			if(Gdx.input.isTouched()) {
 				blnShowTitle = false;
-			}
-			
-			if(blnShowTitle = false) {
-				var.state = var.STATES.GAME;
+				fltCamLerpValue = 0;
 			}
 		}
 	}
