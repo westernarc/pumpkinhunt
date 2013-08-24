@@ -36,9 +36,14 @@ public class Tts implements ApplicationListener {
 		
 		static float tpf;
 	}
-
-	static class control {
-		int h;
+	
+	static class fadefilter {
+		static Sprite sprFilter;
+		static float fltFilterAlpha = 1;
+		static boolean blnFilterOn;
+		//True means filter shows; false is filter is transparent
+		
+		static float fltFilterRate = 0.05f;
 	}
 	
 	AnimationController animController;
@@ -50,7 +55,7 @@ public class Tts implements ApplicationListener {
 	Array<ModelInstance> instances;
 	
 	SpriteBatch spriteBatch;
-	Sprite sprite;
+	Sprite sprTitle;
 	
 	Player player; 
 	
@@ -65,8 +70,8 @@ public class Tts implements ApplicationListener {
 		spriteBatch = new SpriteBatch();
 		
 		cam = new PerspectiveCamera(45, var.w, var.h);
-		cam.position.set(0, -19, 8);
-		cam.lookAt(0,0,0);
+		cam.position.set(0, -19, 18);
+		cam.lookAt(Vector3.Z);
 		cam.near = 0.1f;
 		cam.far = 300f;
 		cam.update();
@@ -75,6 +80,8 @@ public class Tts implements ApplicationListener {
 		instances = new Array<ModelInstance>();
 		var.assets.load("3d/player.g3dj", Model.class);
 		var.assets.load("2d/tex.png", Texture.class);
+		var.assets.load("2d/filter.png", Texture.class);
+		fadefilter.fltFilterAlpha = 1;
 		var.loading = true;
 		
 		var.state = var.STATES.LOAD;
@@ -99,8 +106,9 @@ public class Tts implements ApplicationListener {
 		animController.animate("up", -1, 1f, null, 0.2f);
 		animController.setAnimation("up", -1, 1f, null);
 		
-		sprite = new Sprite(var.assets.get("2d/tex.png", Texture.class));
-		
+		sprTitle = new Sprite(var.assets.get("2d/tex.png", Texture.class));
+		fadefilter.sprFilter = new Sprite(var.assets.get("2d/filter.png", Texture.class));
+		fadefilter.sprFilter.scale(var.h);
 		var.loading = false;
 	}
 	
@@ -136,6 +144,8 @@ public class Tts implements ApplicationListener {
 			if(var.state == var.STATES.MENU) {
 				stateMenu.render(var.tpf);
 			}
+			
+			renderFilter();
 		}
 		
 		if(isKeyPressed(Keys.LEFT)) {
@@ -149,9 +159,29 @@ public class Tts implements ApplicationListener {
 		}
 		if(Gdx.input.isKeyPressed(Input.Keys.S)) {
 		}
-
 	}
 
+	private void renderFilter() {
+		if(fadefilter.blnFilterOn) {
+			if(fadefilter.fltFilterAlpha + fadefilter.fltFilterRate < 1) {
+				fadefilter.fltFilterAlpha += fadefilter.fltFilterRate;
+			} else {
+				fadefilter.fltFilterAlpha = 1;
+			}
+		} else {
+			if(fadefilter.fltFilterAlpha - fadefilter.fltFilterRate > 0) {
+				fadefilter.fltFilterAlpha -= fadefilter.fltFilterRate;
+			} else {
+				fadefilter.fltFilterAlpha = 0;
+			}
+		}
+		fadefilter.sprFilter.setColor(1,1,1,fadefilter.fltFilterAlpha);
+		
+		spriteBatch.begin();
+		fadefilter.sprFilter.draw(spriteBatch);
+		spriteBatch.end();
+	}
+	
 	@Override
 	public void resize(int width, int height) {
 	}
@@ -179,51 +209,47 @@ public class Tts implements ApplicationListener {
 		boolean blnShowTitle;
 		boolean blnTitleCompleted;
 		
-		Vector3 vecCamMenuPos = new Vector3(0,-17,7);
+		Vector3 vecCamMenuPos = new Vector3(2,-17,7);
 		Vector3 vecCamGamePos = new Vector3(0, 20, -50);
 		
 		float fltCamLerpValue;
 		float fltCamLerpMenuRate = 0.001f;
-		float fltCamLerpGameRate = 0.001f;
+		float fltCamLerpGameRate = 0.0001f;
+		float fltCamLerpMenuLimit = 0.1f;
+		float fltCamLerpGameLimit = 0.1f;
 		
 		public void init() {
 			fltTitleAlpha = 0;
 			fltCamLerpValue = 0;
 			
+			blnTitleCompleted = false;
 			blnShowTitle = true;
 		}
 		public void render(float tpf) {
-			
+			sprTitle.setColor(1,1,1,fltTitleAlpha);
 			if(blnShowTitle) {
-				if(fltTitleAlpha + fltTitleFadeRate < 1) {
-					fltTitleAlpha += fltTitleFadeRate;
-				} else {
-					fltTitleAlpha = 1;
+				fadefilter.blnFilterOn = false;
+				if(fltCamLerpValue > fltCamLerpMenuLimit) {
+					if(fltTitleAlpha + fltTitleFadeRate < 1) {fltTitleAlpha += fltTitleFadeRate;} else {fltTitleAlpha = 1;}
 				}
-				sprite.setColor(1,1,1,fltTitleAlpha);
-				
-				if(fltCamLerpValue + fltCamLerpMenuRate < 1) fltCamLerpValue += fltCamLerpMenuRate; else fltCamLerpValue = 1;
+				if(fltCamLerpValue + fltCamLerpMenuRate < 1) {
+					fltCamLerpValue += fltCamLerpMenuRate; 
+				} else {
+					fltCamLerpValue = 1;
+				}
 				cam.position.lerp(vecCamMenuPos, fltCamLerpValue);
+				cam.up.set(Vector3.Y);
 				cam.lookAt(0,-10,4);
-				//cam.position.add(1,0,0);
 			} else {
-				if(fltTitleAlpha - fltTitleFadeRate > 0) {
-					fltTitleAlpha -= fltTitleFadeRate;
-				} else {
-					fltTitleAlpha = 0;
-				}
-				if(blnShowTitle = false) {
-					var.state = var.STATES.GAME;
-				}
-				sprite.setColor(1,1,1,fltTitleAlpha);
+				if(fltTitleAlpha - fltTitleFadeRate > 0) {fltTitleAlpha -= fltTitleFadeRate; } else { fltTitleAlpha = 0; }
 				
 				if(fltCamLerpValue + fltCamLerpGameRate < 1) fltCamLerpValue += fltCamLerpGameRate; else fltCamLerpValue = 1;
 				cam.position.lerp(vecCamGamePos, fltCamLerpValue);
 				cam.up.set(Vector3.Y);
-				cam.lookAt(0,0,0);
+				cam.lookAt(0,-10,4);
 			}
 			spriteBatch.begin();
-			sprite.draw(spriteBatch);
+			sprTitle.draw(spriteBatch);
 			spriteBatch.end();
 			
 			if(Gdx.input.isTouched()) {
