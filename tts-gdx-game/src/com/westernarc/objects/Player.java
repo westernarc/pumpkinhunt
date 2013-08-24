@@ -5,12 +5,12 @@ import com.badlogic.gdx.math.Vector;
 import com.badlogic.gdx.math.Vector3;
 public class Player {
 	//3d coords
-	Vector3 pos;
-	Vector3 vel;
+	public Vector3 pos;
+	public Vector3 vel;
 	
 	//radial coords
 	//Modify these directly
-	Vector3 radPos;
+	public Vector3 radPos;
 	//float angle;  	//Polar angle
 	//float rad;		//Radius from center
 	//float dist;		//Distance on z axis

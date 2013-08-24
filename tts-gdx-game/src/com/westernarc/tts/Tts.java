@@ -51,7 +51,8 @@ public class Tts implements ApplicationListener {
 	ModelBatch modelBatch;
 	
 	PerspectiveCamera cam;
-	ModelInstance cube;
+	ModelInstance mdiPlayer;
+	Model cube;
 	Array<ModelInstance> instances;
 	
 	SpriteBatch spriteBatch;
@@ -79,6 +80,7 @@ public class Tts implements ApplicationListener {
 		var.assets = new AssetManager();
 		instances = new Array<ModelInstance>();
 		var.assets.load("3d/player.g3dj", Model.class);
+		var.assets.load("3d/cube.g3dj", Model.class);
 		var.assets.load("2d/tex.png", Texture.class);
 		var.assets.load("2d/filter.png", Texture.class);
 		fadefilter.fltFilterAlpha = 1;
@@ -86,6 +88,10 @@ public class Tts implements ApplicationListener {
 		
 		var.state = var.STATES.LOAD;
 		
+		player = new Player();
+		player.radPos.x = -1.55f;
+		player.radPos.y = 10;
+		player.polToRectCoords();
 		stateMenu = new MENU();
 		stateMenu.init();
 	}
@@ -95,16 +101,14 @@ public class Tts implements ApplicationListener {
 	}
 	
 	private void doneLoading() {
-		Model cubeModel = var.assets.get("3d/player.g3dj", Model.class);
+		Model playerModel = var.assets.get("3d/player.g3dj", Model.class);
+		mdiPlayer = new ModelInstance(playerModel);
 		
-		cube = new ModelInstance(cubeModel);
-		cube.transform.translate(0,-10,0);
-		
-		instances.add(cube);
-		
-		animController = new AnimationController(cube);
+		animController = new AnimationController(mdiPlayer);
 		animController.animate("up", -1, 1f, null, 0.2f);
 		animController.setAnimation("up", -1, 1f, null);
+		
+		cube = var.assets.get("3d/cube.g3dj", Model.class);
 		
 		sprTitle = new Sprite(var.assets.get("2d/tex.png", Texture.class));
 		fadefilter.sprFilter = new Sprite(var.assets.get("2d/filter.png", Texture.class));
@@ -131,6 +135,10 @@ public class Tts implements ApplicationListener {
 			Gdx.gl.glViewport(0,0,var.w,var.h);
 			Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
 			
+			//spawn bullets
+			if(Math.random() < 0.01f) {
+				instances.add(new ModelInstance(cube));
+			}
 			
 			animController.update(Gdx.graphics.getDeltaTime());
 			 
@@ -138,7 +146,14 @@ public class Tts implements ApplicationListener {
 			
 			for(ModelInstance instance : instances) {
 				modelBatch.render(instance);
+				
+				//Move cubes down
+				instance.transform.translate(0,0,0.3f);
 			}
+			
+			mdiPlayer.transform.setToRotation(Vector3.Z, player.radPos.x * 360f / 6.283f + 90);
+			mdiPlayer.transform.setTranslation(player.pos);
+			modelBatch.render(mdiPlayer);
 			modelBatch.end();
 			
 			if(var.state == var.STATES.MENU) {
@@ -149,13 +164,16 @@ public class Tts implements ApplicationListener {
 		}
 		
 		if(isKeyPressed(Keys.LEFT)) {
-			cube.transform.translate(1f,0,0);
+			//player.pos.x += 1f;
+			player.radPos.x += 0.05f;
+			player.polToRectCoords();
 		}
 		if(isKeyPressed(Keys.RIGHT)) {
-			cube.transform.translate(-1f,0,0);
+			player.radPos.x -= 0.05f;
+			player.polToRectCoords();
 		}
 		if(isKeyPressed(Keys.A)) {
-			cube.transform.rotate(0,0,1,4f);
+			mdiPlayer.transform.rotate(0,0,1,4f);
 		}
 		if(Gdx.input.isKeyPressed(Input.Keys.S)) {
 		}
@@ -210,7 +228,7 @@ public class Tts implements ApplicationListener {
 		boolean blnTitleCompleted;
 		
 		Vector3 vecCamMenuPos = new Vector3(2,-17,7);
-		Vector3 vecCamGamePos = new Vector3(0, 20, -50);
+		Vector3 vecCamGamePos = new Vector3(0, 0, -50);
 		
 		float fltCamLerpValue;
 		float fltCamLerpMenuRate = 0.001f;
@@ -218,12 +236,18 @@ public class Tts implements ApplicationListener {
 		float fltCamLerpMenuLimit = 0.1f;
 		float fltCamLerpGameLimit = 0.1f;
 		
+		Vector3 vecCamMenuFocus;
+		Vector3 vecCamGameFocus;
+		
 		public void init() {
 			fltTitleAlpha = 0;
 			fltCamLerpValue = 0;
 			
 			blnTitleCompleted = false;
 			blnShowTitle = true;
+			
+			vecCamMenuFocus = new Vector3(0,-10,4);
+			vecCamGameFocus = new Vector3(0,0,0);
 		}
 		public void render(float tpf) {
 			sprTitle.setColor(1,1,1,fltTitleAlpha);
@@ -239,20 +263,20 @@ public class Tts implements ApplicationListener {
 				}
 				cam.position.lerp(vecCamMenuPos, fltCamLerpValue);
 				cam.up.set(Vector3.Y);
-				cam.lookAt(0,-10,4);
+				cam.lookAt(vecCamMenuFocus);
 			} else {
 				if(fltTitleAlpha - fltTitleFadeRate > 0) {fltTitleAlpha -= fltTitleFadeRate; } else { fltTitleAlpha = 0; }
 				
 				if(fltCamLerpValue + fltCamLerpGameRate < 1) fltCamLerpValue += fltCamLerpGameRate; else fltCamLerpValue = 1;
 				cam.position.lerp(vecCamGamePos, fltCamLerpValue);
 				cam.up.set(Vector3.Y);
-				cam.lookAt(0,-10,4);
+				cam.lookAt(vecCamMenuFocus.lerp(vecCamGameFocus, fltCamLerpValue));
 			}
 			spriteBatch.begin();
 			sprTitle.draw(spriteBatch);
 			spriteBatch.end();
 			
-			if(Gdx.input.isTouched()) {
+			if(Gdx.input.isTouched() && fltTitleAlpha == 1) {
 				blnShowTitle = false;
 				fltCamLerpValue = 0;
 			}
