@@ -29,7 +29,6 @@ public class Tts implements ApplicationListener {
 		static int h;
 		
 		static AssetManager assets;
-		static boolean loading;
 		
 		static enum STATES {LOAD, MENU, GAME, DEAD, SCORE};
 		static STATES state;
@@ -52,6 +51,7 @@ public class Tts implements ApplicationListener {
 	
 	PerspectiveCamera cam;
 	ModelInstance mdiPlayer;
+	ModelInstance mdiSky;
 	Model cube;
 	Array<ModelInstance> instances;
 	
@@ -61,7 +61,7 @@ public class Tts implements ApplicationListener {
 	Player player; 
 	
 	MENU stateMenu;
-	
+	GAME stateGame;
 	@Override
 	public void create() {		
 		var.w = Gdx.graphics.getWidth();
@@ -69,22 +69,17 @@ public class Tts implements ApplicationListener {
 		
 		modelBatch = new ModelBatch();
 		spriteBatch = new SpriteBatch();
-		
-		cam = new PerspectiveCamera(45, var.w, var.h);
-		cam.position.set(0, -19, 18);
-		cam.lookAt(Vector3.Z);
-		cam.near = 0.1f;
-		cam.far = 300f;
-		cam.update();
-		
+
 		var.assets = new AssetManager();
-		instances = new Array<ModelInstance>();
+		
 		var.assets.load("3d/player.g3dj", Model.class);
+		var.assets.load("3d/sky.g3dj", Model.class);
 		var.assets.load("3d/cube.g3dj", Model.class);
+		
 		var.assets.load("2d/tex.png", Texture.class);
+		var.assets.load("2d/title.png", Texture.class);
 		var.assets.load("2d/filter.png", Texture.class);
 		fadefilter.fltFilterAlpha = 1;
-		var.loading = true;
 		
 		var.state = var.STATES.LOAD;
 		
@@ -93,7 +88,7 @@ public class Tts implements ApplicationListener {
 		player.radPos.y = 10;
 		player.polToRectCoords();
 		stateMenu = new MENU();
-		stateMenu.init();
+		stateGame = new GAME();
 	}
 
 	public void recreate() {
@@ -101,19 +96,23 @@ public class Tts implements ApplicationListener {
 	}
 	
 	private void doneLoading() {
-		Model playerModel = var.assets.get("3d/player.g3dj", Model.class);
-		mdiPlayer = new ModelInstance(playerModel);
+		Model mdlPlayer = var.assets.get("3d/player.g3dj", Model.class);
+		mdiPlayer = new ModelInstance(mdlPlayer);
 		
 		animController = new AnimationController(mdiPlayer);
 		animController.animate("up", -1, 1f, null, 0.2f);
 		animController.setAnimation("up", -1, 1f, null);
 		
+		Model mdlSky = var.assets.get("3d/sky.g3dj", Model.class);
+		mdiSky = new ModelInstance(mdlSky);
+		
 		cube = var.assets.get("3d/cube.g3dj", Model.class);
 		
-		sprTitle = new Sprite(var.assets.get("2d/tex.png", Texture.class));
+		stateMenu.init();
+		stateGame.init();
+		
 		fadefilter.sprFilter = new Sprite(var.assets.get("2d/filter.png", Texture.class));
 		fadefilter.sprFilter.scale(var.h);
-		var.loading = false;
 	}
 	
 	@Override
@@ -123,7 +122,8 @@ public class Tts implements ApplicationListener {
 	@Override
 	public void render() {
 		var.tpf = Gdx.graphics.getDeltaTime();
-		cam.update();
+		if(cam != null)
+			cam.update();
 		
 		if(var.state == var.STATES.LOAD) {
 			if(var.assets.update()) {
@@ -133,24 +133,15 @@ public class Tts implements ApplicationListener {
 		} else {
 			
 			Gdx.gl.glViewport(0,0,var.w,var.h);
+			Gdx.gl.glClearColor(0.3137f, 0.6824f, 0.8f, 1);
 			Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
-			
-			//spawn bullets
-			if(Math.random() < 0.01f) {
-				instances.add(new ModelInstance(cube));
-			}
-			
+						
 			animController.update(Gdx.graphics.getDeltaTime());
 			 
 			modelBatch.begin(cam);
 			
-			for(ModelInstance instance : instances) {
-				modelBatch.render(instance);
-				
-				//Move cubes down
-				instance.transform.translate(0,0,0.3f);
-			}
-			
+			modelBatch.render(mdiSky);
+						
 			mdiPlayer.transform.setToRotation(Vector3.Z, player.radPos.x * 360f / 6.283f + 90);
 			mdiPlayer.transform.setTranslation(player.pos);
 			modelBatch.render(mdiPlayer);
@@ -158,25 +149,14 @@ public class Tts implements ApplicationListener {
 			
 			if(var.state == var.STATES.MENU) {
 				stateMenu.render(var.tpf);
+			} else if(var.state == var.STATES.GAME) {
+				stateGame.render(var.tpf);
 			}
 			
 			renderFilter();
 		}
 		
-		if(isKeyPressed(Keys.LEFT)) {
-			//player.pos.x += 1f;
-			player.radPos.x += 0.05f;
-			player.polToRectCoords();
-		}
-		if(isKeyPressed(Keys.RIGHT)) {
-			player.radPos.x -= 0.05f;
-			player.polToRectCoords();
-		}
-		if(isKeyPressed(Keys.A)) {
-			mdiPlayer.transform.rotate(0,0,1,4f);
-		}
-		if(Gdx.input.isKeyPressed(Input.Keys.S)) {
-		}
+
 	}
 
 	private void renderFilter() {
@@ -215,9 +195,55 @@ public class Tts implements ApplicationListener {
 		return Gdx.input.isKeyPressed(key);
 	}
 	class GAME {
-		 
-		public void render(float tpf) {
+		public void init() {
+			cam = new PerspectiveCamera(55, var.w, var.h);
+			cam.position.set(0, -19, 18);
+			cam.lookAt(Vector3.Z);
+			cam.near = 0.1f;
+			cam.far = 1000f;
+			cam.update();
 			
+			instances = new Array<ModelInstance>();
+		}
+		public void render(float tpf) {
+			//spawn bullets
+			if(Math.random() < 0.08f) {
+				ModelInstance cubeInstance = new ModelInstance(cube);
+				float randAngle = (float)Math.random();
+				cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(randAngle * 6.28f) * 10, (float)Math.sin(randAngle * 6.28) * 10, 1200));
+				instances.add(cubeInstance);
+			}
+			/*
+			if(Math.random() < 0.05f) {
+				for(int i = 0; i < 32; i++) {
+					ModelInstance cubeInstance = new ModelInstance(cube);
+					cubeInstance.transform.setTranslation(new Vector3((float)Math.cos((i/32f) * 6.28f) * 10, (float)Math.sin((i/32f)* 6.28) * 10, 700));
+					instances.add(cubeInstance);
+				}
+			}*/
+			
+			for(ModelInstance instance : instances) {
+				modelBatch.render(instance);
+				
+				//Move cubes down
+				instance.transform.translate(0,0,-3f);
+			}
+			
+
+			if(isKeyPressed(Keys.LEFT)) {
+				//player.pos.x += 1f;
+				player.radPos.x += 0.05f;
+				player.polToRectCoords();
+			}
+			if(isKeyPressed(Keys.RIGHT)) {
+				player.radPos.x -= 0.05f;
+				player.polToRectCoords();
+			}
+			if(isKeyPressed(Keys.A)) {
+				mdiPlayer.transform.rotate(0,0,1,4f);
+			}
+			if(Gdx.input.isKeyPressed(Input.Keys.S)) {
+			}
 		}
 	}
 	class MENU {
@@ -248,6 +274,9 @@ public class Tts implements ApplicationListener {
 			
 			vecCamMenuFocus = new Vector3(0,-10,4);
 			vecCamGameFocus = new Vector3(0,0,0);
+			
+			sprTitle = new Sprite(var.assets.get("2d/title.png", Texture.class));
+			sprTitle.setPosition(var.w/2f - (sprTitle.getWidth()/2f), var.h / 3f - (sprTitle.getHeight()/2f));
 		}
 		public void render(float tpf) {
 			sprTitle.setColor(1,1,1,fltTitleAlpha);
@@ -271,6 +300,10 @@ public class Tts implements ApplicationListener {
 				cam.position.lerp(vecCamGamePos, fltCamLerpValue);
 				cam.up.set(Vector3.Y);
 				cam.lookAt(vecCamMenuFocus.lerp(vecCamGameFocus, fltCamLerpValue));
+				if(fltCamLerpValue >= 0.03f) {
+					//Camera is done transitioning; Menu state is over
+					var.state = var.STATES.GAME;
+				}
 			}
 			spriteBatch.begin();
 			sprTitle.draw(spriteBatch);
