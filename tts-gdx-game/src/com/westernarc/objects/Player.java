@@ -6,7 +6,7 @@ import com.badlogic.gdx.math.Vector3;
 public class Player {
 	//3d coords
 	public Vector3 pos;
-	public Vector3 vel;
+	Vector3 vel;
 	
 	//radial coords
 	//Modify these directly
@@ -17,6 +17,8 @@ public class Player {
 	
 	ModelInstance modelInstance;
 
+	public float rotAngle;
+	
 	public Player() {
 		pos = new Vector3();
 		vel = new Vector3();

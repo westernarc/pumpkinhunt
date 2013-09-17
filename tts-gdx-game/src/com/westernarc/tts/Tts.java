@@ -24,9 +24,16 @@ import com.badlogic.gdx.utils.Array;
 import com.westernarc.objects.Player;
 
 public class Tts implements ApplicationListener {
+	
+	//transform m4:
+	//Value [12]: X
+	//Value [13]: Y
+	//Value [14]: Z
 	static class var {
 		static int w;
 		static int h;
+		
+		static float gameSize = 13;
 		
 		static AssetManager assets;
 		
@@ -51,8 +58,14 @@ public class Tts implements ApplicationListener {
 	
 	PerspectiveCamera cam;
 	ModelInstance mdiPlayer;
+
 	ModelInstance mdiSky;
+	Model mdlGround;
+	ModelInstance[] mdiGround;
+	final int numGround = 3;
+	final int numGroundLength = 800;
 	Model cube;
+	Model mdlUfoR;
 	Array<ModelInstance> instances;
 	
 	SpriteBatch spriteBatch;
@@ -62,6 +75,15 @@ public class Tts implements ApplicationListener {
 	
 	MENU stateMenu;
 	GAME stateGame;
+	
+	enum emitterstate {
+		OFF,
+		RANDOM,
+		SPIRAL2
+	}
+	emitterstate estate;
+	float[] ptime;
+	
 	@Override
 	public void create() {		
 		var.w = Gdx.graphics.getWidth();
@@ -73,8 +95,10 @@ public class Tts implements ApplicationListener {
 		var.assets = new AssetManager();
 		
 		var.assets.load("3d/player.g3dj", Model.class);
+		var.assets.load("3d/ground.g3dj", Model.class);
 		var.assets.load("3d/sky.g3dj", Model.class);
 		var.assets.load("3d/cube.g3dj", Model.class);
+		var.assets.load("3d/ufoR.g3dj", Model.class);
 		
 		var.assets.load("2d/tex.png", Texture.class);
 		var.assets.load("2d/title.png", Texture.class);
@@ -102,11 +126,20 @@ public class Tts implements ApplicationListener {
 		animController = new AnimationController(mdiPlayer);
 		animController.animate("up", -1, 1f, null, 0.2f);
 		animController.setAnimation("up", -1, 1f, null);
-		
+
 		Model mdlSky = var.assets.get("3d/sky.g3dj", Model.class);
 		mdiSky = new ModelInstance(mdlSky);
 		
+		Model mdlGround = var.assets.get("3d/ground.g3dj", Model.class);
+		mdiGround = new ModelInstance[numGround];
+		for(int i = 0; i < numGround; i++) {
+			mdiGround[i] = new ModelInstance(mdlGround);
+			mdiGround[i].transform.translate(0,0,i * numGroundLength);
+		}
+		
 		cube = var.assets.get("3d/cube.g3dj", Model.class);
+		mdlUfoR = var.assets.get("3d/ufoR.g3dj", Model.class);
+		
 		
 		stateMenu.init();
 		stateGame.init();
@@ -140,9 +173,15 @@ public class Tts implements ApplicationListener {
 			 
 			modelBatch.begin(cam);
 			
-			modelBatch.render(mdiSky);
-						
-			mdiPlayer.transform.setToRotation(Vector3.Z, player.radPos.x * 360f / 6.283f + 90);
+			//modelBatch.render(mdiSky);
+			for(ModelInstance grndInstance : mdiGround) {
+				modelBatch.render(grndInstance);
+				grndInstance.transform.translate(0, 0, -5);
+				if(grndInstance.transform.getValues()[14] < -numGroundLength){
+					grndInstance.transform.translate(0,0,numGroundLength * numGround);
+				}
+			}
+		    mdiPlayer.transform.setToRotation(Vector3.Z, player.radPos.x * 360f / 6.283f + 90);
 			mdiPlayer.transform.setTranslation(player.pos);
 			modelBatch.render(mdiPlayer);
 			modelBatch.end();
@@ -194,6 +233,9 @@ public class Tts implements ApplicationListener {
 	private boolean isKeyPressed(int key){
 		return Gdx.input.isKeyPressed(key);
 	}
+	public void resetPtime() {
+		for(int i = 0; i < 64; i++) ptime[i] = 0;
+	}
 	class GAME {
 		public void init() {
 			cam = new PerspectiveCamera(55, var.w, var.h);
@@ -204,41 +246,91 @@ public class Tts implements ApplicationListener {
 			cam.update();
 			
 			instances = new Array<ModelInstance>();
+			
+			//Emitter state.  Defaults to RANDOM.
+			estate = emitterstate.SPIRAL2;
+			//Initialize array of pattern timer temp variables
+			ptime = new float[64];
+			resetPtime();
 		}
+		
 		public void render(float tpf) {
 			//spawn bullets
-			if(Math.random() < 0.08f) {
-				ModelInstance cubeInstance = new ModelInstance(cube);
-				float randAngle = (float)Math.random();
-				cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(randAngle * 6.28f) * 10, (float)Math.sin(randAngle * 6.28) * 10, 1200));
-				instances.add(cubeInstance);
-			}
-			/*
-			if(Math.random() < 0.05f) {
-				for(int i = 0; i < 32; i++) {
+			switch(estate) {
+			case RANDOM:
+				if(Math.random() < 0.08f & instances.size < 15) {
 					ModelInstance cubeInstance = new ModelInstance(cube);
-					cubeInstance.transform.setTranslation(new Vector3((float)Math.cos((i/32f) * 6.28f) * 10, (float)Math.sin((i/32f)* 6.28) * 10, 700));
+					float randAngle = (float)Math.random();
+					cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(randAngle * 6.28f) * 10, (float)Math.sin(randAngle * 6.28) * 10, 1200));
 					instances.add(cubeInstance);
 				}
-			}*/
-			
+				break;
+			case SPIRAL2:
+				//0: angle 1
+				//1: angle 2
+				//2: spawn interval 1
+				//3: spawn interval 2
+				ptime[0] += tpf * 10f;
+				ptime[1] += tpf * 10f;
+				ptime[2] += tpf;
+				
+				if(ptime[2] > 0.05f) {
+					ModelInstance cubeInstance = new ModelInstance(mdlUfoR);
+					cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(ptime[0]) * 10, (float)Math.sin(ptime[0]) * 10, 1200));
+					cubeInstance.transform.rotate(Vector3.Z,(ptime[0]) * 360 / 6.283f + 90);
+					instances.add(cubeInstance);
+					
+					cubeInstance = new ModelInstance(mdlUfoR);
+					cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(ptime[0]+ 3.14f) * 10, (float)Math.sin(ptime[0] + 3.14f) * 10, 1200));
+					cubeInstance.transform.rotate(Vector3.Z,ptime[0] * 360 / 3.14f);
+					//instances.add(cubeInstance);
+					ptime[2] = 0;
+				}
+				
+				break;
+			}
 			for(ModelInstance instance : instances) {
 				modelBatch.render(instance);
 				
 				//Move cubes down
 				instance.transform.translate(0,0,-3f);
+				
+				//Remove cubes out of view
+				if(instance.transform.getValues()[14] < -100) {
+					instances.removeValue(instance, true);
+					continue;
+				}
+				
+				//Basic collision
+				if(Math.abs(instance.transform.getValues()[12] - mdiPlayer.transform.getValues()[12]) < 2 && 
+						Math.abs(instance.transform.getValues()[13] - mdiPlayer.transform.getValues()[13]) < 2 &&
+						Math.abs(instance.transform.getValues()[14] - mdiPlayer.transform.getValues()[14]) < 2) {
+					instances.removeValue(instance, true);
+					continue;
+				}
 			}
 			
-
 			if(isKeyPressed(Keys.LEFT)) {
 				//player.pos.x += 1f;
+				//mdiPlayer.transform.rotate(0,1,0,-4);
 				player.radPos.x += 0.05f;
 				player.polToRectCoords();
-			}
-			if(isKeyPressed(Keys.RIGHT)) {
+				if(animController.current.animation.id != "right"){
+					animController.animate("right", -1, 1f, null, 0.5f);
+				}
+			} else if(isKeyPressed(Keys.RIGHT)) {
+				//mdiPlayer.transform.rotate(0,1,0,4);
 				player.radPos.x -= 0.05f;
 				player.polToRectCoords();
+				if(animController.current.animation.id != "left"){
+					animController.animate("left", -1, 1f, null, 0.5f);
+				}
+			} else {
+				if(animController.current.animation.id != "up"){
+					//animController.animate("up", -1, 1f, null, 1f);
+				}
 			}
+			
 			if(isKeyPressed(Keys.A)) {
 				mdiPlayer.transform.rotate(0,0,1,4f);
 			}
