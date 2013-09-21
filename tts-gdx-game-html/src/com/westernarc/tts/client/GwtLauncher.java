@@ -1,6 +1,6 @@
 package com.westernarc.tts.client;
 
-import com.westernarc.tts.Tts;
+import com.westernarc.ufohunt.Tts;
 import com.badlogic.gdx.ApplicationListener;
 import com.badlogic.gdx.backends.gwt.GwtApplication;
 import com.badlogic.gdx.backends.gwt.GwtApplicationConfiguration;
