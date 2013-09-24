@@ -1,5 +1,8 @@
 package com.westernarc.ufohunt;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+
 import com.badlogic.gdx.ApplicationListener;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
@@ -21,6 +24,8 @@ import com.badlogic.gdx.graphics.g3d.decals.DecalBatch;
 import com.badlogic.gdx.graphics.g3d.utils.AnimationController;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
+import com.westernarc.ufohunt.Behaviours.SimpleBehaviour;
+import com.westernarc.ufohunt.Objects.GameObject;
 import com.westernarc.ufohunt.Objects.Player;
 
 public class Tts implements ApplicationListener {
@@ -66,12 +71,14 @@ public class Tts implements ApplicationListener {
 	final int numGroundLength = 800;
 	Model cube;
 	Model mdlUfoR;
-	Array<ModelInstance> instances;
+	ArrayList<ModelInstance> instances;
+	ArrayList<GameObject> ufos;
+	ArrayList<GameObject> shots;
 	
 	SpriteBatch spriteBatch;
 	Sprite sprTitle;
 	
-	Player player; 
+	GameObject player; 
 	
 	MENU stateMenu;
 	GAME stateGame;
@@ -99,10 +106,8 @@ public class Tts implements ApplicationListener {
 		
 		var.state = var.STATES.LOAD;
 		
-		player = new Player();
-		player.radPos.x = -1.55f;
-		player.radPos.y = 10;
-		player.polToRectCoords();
+		player = new GameObject(true, 10);
+		
 		stateMenu = new MENU();
 		stateGame = new GAME();
 	}
@@ -114,6 +119,7 @@ public class Tts implements ApplicationListener {
 	private void doneLoading() {
 		Model mdlPlayer = var.assets.get("3d/player.g3dj", Model.class);
 		mdiPlayer = new ModelInstance(mdlPlayer);
+		player.mdi = mdiPlayer;
 		
 		animController = new AnimationController(mdiPlayer);
 		animController.animate("up", -1, 1f, null, 0.2f);
@@ -156,7 +162,6 @@ public class Tts implements ApplicationListener {
 				var.state = var.STATES.MENU;
 			}
 		} else {
-			
 			Gdx.gl.glViewport(0,0,var.w,var.h);
 			Gdx.gl.glClearColor(0.3137f, 0.6824f, 0.8f, 1);
 			Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
@@ -173,9 +178,8 @@ public class Tts implements ApplicationListener {
 					grndInstance.transform.translate(0,0,numGroundLength * numGround);
 				}
 			}
-		    mdiPlayer.transform.setToRotation(Vector3.Z, player.radPos.x * 360f / 6.283f + 90);
-			mdiPlayer.transform.setTranslation(player.pos);
-			modelBatch.render(mdiPlayer);
+			player.update(var.tpf);
+			modelBatch.render(player.mdi);
 			modelBatch.end();
 			
 			if(var.state == var.STATES.MENU) {
@@ -245,10 +249,15 @@ public class Tts implements ApplicationListener {
 		int estate;
 		
 		float[] ptime;//Pattern times
+		
 		float[] gtime;//Game times
 		final int GAME = 0;
 		final int ESTATE = 1;
+		final int SHOT = 2;
+		
 		final int estateChangeTime = 200; 
+		
+		float shotCooldown = 0.3f;
 		
 		public void init() {
 			cam = new PerspectiveCamera(55, var.w, var.h);
@@ -261,28 +270,72 @@ public class Tts implements ApplicationListener {
 			reinit();
 		}
 		public void reinit() {
-			instances = new Array<ModelInstance>();
+			instances = new ArrayList<ModelInstance>();
+			ufos = new ArrayList<GameObject>();
+			shots = new ArrayList<GameObject>();
 			
 			//Emitter state.  Defaults to RANDOM.
-			estate = BOSS;
+			estate = WALL1GAP1;
 			//Initialize array of pattern timer temp variables
 			ptime = new float[64];
 			gtime = new float[64];
 			resetPtime();
 			gtime[GAME] = 0;
 			
-			player.radPos.x = -1.55f;
-			player.radPos.y = 10;
-			player.polToRectCoords();
-			
 			fadefilter.blnFilterOn = false;
+		}
+		public void playerFire() {
+			if(gtime[SHOT] > shotCooldown) {
+				gtime[SHOT] = 0;
+				GameObject obj = new GameObject(true, 10);
+				obj.mdi = new ModelInstance(cube);
+				
+				obj.polpos.set(player.polpos.x, player.polpos.y, player.pos.z);
+				obj.behaviours.add(new SimpleBehaviour(0,0,4));
+				shots.add(obj);
+			}
+		}
+		public void handleInput(float tpf) {
+			//Update shot timer 
+			gtime[SHOT] += tpf;
+			
+			if(isKeyPressed(Keys.LEFT)) {
+				//player.pos.x += 1f;
+				//mdiPlayer.transform.rotate(0,1,0,-4);
+				player.acc.set(-0.01f,0,0);
+				if(animController.current.animation.id != "right"){
+					//animController.animate("right", -1, 1f, null, 0.5f);
+				}
+			} else if(isKeyPressed(Keys.RIGHT)) {
+				//mdiPlayer.transform.rotate(0,1,0,4);
+				player.acc.set(0.01f,0,0);
+				if(animController.current.animation.id != "left"){
+					//animController.animate("left", -1, 1f, null, 0.5f);
+				}
+			} else if(isKeyPressed(Keys.UP)){
+				if(animController.current.animation.id != "up"){
+					animController.animate("up", -1, 1f, null, 1f);
+				}
+			} else {
+				player.acc.set(0,0,0);
+				//player.dec(0.1f,0.1f,0.1f);
+			}
+			
+			if(isKeyPressed(Keys.A)) {
+				playerFire();
+			}
+			if(Gdx.input.isKeyPressed(Input.Keys.S)) {
+				if(!fadefilter.blnFilterOn){
+					fadefilter.blnFilterOn = true;
+				}
+			}
 		}
 		public void render(float tpf) {
 			//Update all game timers
 			for(int i = 0; i < 64; i++) {
 				gtime[i] += tpf;
 			}
-			
+			System.out.println(player.polpos);
 			//After every interval estateChangeTime long, change the estate
 			if(gtime[ESTATE] > estateChangeTime) {
 				estate = chance(3,3);
@@ -311,9 +364,11 @@ public class Tts implements ApplicationListener {
 				
 				if(ptime[2] > 0.05f) {
 					ModelInstance cubeInstance = new ModelInstance(mdlUfoR);
+					
 					cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(ptime[0]) * 10, (float)Math.sin(ptime[0]) * 10, 1200));
 					cubeInstance.transform.rotate(Vector3.Z,(ptime[0]) * 360 / 6.283f + 90);
 					instances.add(cubeInstance);
+					
 					
 					cubeInstance = new ModelInstance(mdlUfoR);
 					cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(ptime[0]+ 3.14f) * 10, (float)Math.sin(ptime[0] + 3.14f) * 10, 1200));
@@ -336,9 +391,14 @@ public class Tts implements ApplicationListener {
 					for(int i = 0; i < angles; i++) {
 						if( i != gap) {
 							ModelInstance cubeInstance = new ModelInstance(mdlUfoR);
-							cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(i/angles * 6.283f) * 10, (float)Math.sin(i/angles * 6.283f) * 10, 1200));
-							cubeInstance.transform.rotate(Vector3.Z,(i/angles*6.283f) * 360 / 6.283f + 90);
-							instances.add(cubeInstance);
+							GameObject ufo = new GameObject(true,10);
+							//cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(i/angles * 6.283f) * 10, (float)Math.sin(i/angles * 6.283f) * 10, 1200));
+							//cubeInstance.transform.rotate(Vector3.Z,(i/angles*6.283f) * 360 / 6.283f + 90);
+							//instances.add(cubeInstance);
+							ufo.vel.set(0,0,-2);
+							ufo.polpos.set((i / angles * 62.83f), 0, 1200);
+							ufo.mdi = cubeInstance;
+							ufos.add(ufo);
 						}
 					}
 					ptime[2] = 0;
@@ -346,7 +406,7 @@ public class Tts implements ApplicationListener {
 				
 				break;
 			case BOSS:
-				if(instances.size == 0) {
+				if(instances.size() == 0) {
 					ModelInstance bossInstance = new ModelInstance(mdlUfoR);
 					bossInstance.transform.scale(8, 8, 8);
 					bossInstance.transform.setTranslation(new Vector3(0,-10,1200));
@@ -358,56 +418,48 @@ public class Tts implements ApplicationListener {
 			default:
 				break;
 			}
-			for(ModelInstance instance : instances) {
-				modelBatch.render(instance);
+			//Update and draw UFOs
+			Iterator<GameObject> ufoIter = ufos.iterator();
+			Iterator<GameObject> shotIter;
+			GameObject curUfo;
+			GameObject curShot;
+			while(ufoIter.hasNext()) {
+				curUfo = ufoIter.next();
+				curUfo.update(tpf);
+				modelBatch.render(curUfo.mdi);
 				
-				//Move cubes down
-				instance.transform.translate(0,0,-3f);
-				
-				//Remove cubes out of view
-				if(instance.transform.getValues()[14] < -100) {
-					instances.removeValue(instance, true);
+				//Test each ufo for collision with player
+				if(curUfo.boxCollides(player, 2)) {
+					ufoIter.remove();
 					continue;
 				}
 				
-				//Basic collision
-				if(Math.abs(instance.transform.getValues()[12] - mdiPlayer.transform.getValues()[12]) < 2 && 
-						Math.abs(instance.transform.getValues()[13] - mdiPlayer.transform.getValues()[13]) < 2 &&
-						Math.abs(instance.transform.getValues()[14] - mdiPlayer.transform.getValues()[14]) < 2) {
-					instances.removeValue(instance, true);
+				shotIter = shots.iterator();
+				while(shotIter.hasNext()) {
+					curShot = shotIter.next();
+					
+					if(curUfo.boxCollides(curShot, 4)) {
+						shotIter.remove();
+						continue;
+					}
+				}
+			}
+			
+			//Update and draw shots
+			shotIter = shots.iterator();
+			while(shotIter.hasNext()) {
+				curShot = shotIter.next();
+				curShot.update(tpf);
+				modelBatch.render(curShot.mdi);
+				
+				//If the bullet's position z is over 500 kill it
+				if(curShot.pos.z > 500) {
+					shotIter.remove();
 					continue;
 				}
 			}
 			
-			if(isKeyPressed(Keys.LEFT)) {
-				//player.pos.x += 1f;
-				//mdiPlayer.transform.rotate(0,1,0,-4);
-				player.radPos.x += 0.05f;
-				player.polToRectCoords();
-				if(animController.current.animation.id != "right"){
-					//animController.animate("right", -1, 1f, null, 0.5f);
-				}
-			} else if(isKeyPressed(Keys.RIGHT)) {
-				//mdiPlayer.transform.rotate(0,1,0,4);
-				player.radPos.x -= 0.05f;
-				player.polToRectCoords();
-				if(animController.current.animation.id != "left"){
-					//animController.animate("left", -1, 1f, null, 0.5f);
-				}
-			} else if(isKeyPressed(Keys.UP)){
-				if(animController.current.animation.id != "up"){
-					animController.animate("up", -1, 1f, null, 1f);
-				}
-			}
-			
-			if(isKeyPressed(Keys.A)) {
-				mdiPlayer.transform.rotate(0,0,1,4f);
-			}
-			if(Gdx.input.isKeyPressed(Input.Keys.S)) {
-				if(!fadefilter.blnFilterOn){
-					fadefilter.blnFilterOn = true;
-				}
-			}
+			handleInput(tpf);
 			
 			//Check if faded out after attempting reinit
 			if(fadefilter.fltFilterAlpha == 1) {
