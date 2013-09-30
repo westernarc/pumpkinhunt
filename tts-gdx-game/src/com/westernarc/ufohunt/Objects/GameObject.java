@@ -81,7 +81,7 @@ public class GameObject {
 			}
 		}
 		
-		mdi.transform.setToRotation(Vector3.Z, angle * 360f / TWOPI);
+		mdi.transform.setToRotation(Vector3.Z, ((angle - vel.x*2)* 360f / TWOPI));
 		mdi.transform.setTranslation(pos);
 	}
 	

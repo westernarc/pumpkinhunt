@@ -8,11 +8,13 @@ import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Input.Keys;
 import com.badlogic.gdx.assets.AssetManager;
+import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL10;
 import com.badlogic.gdx.graphics.OrthographicCamera;
 import com.badlogic.gdx.graphics.PerspectiveCamera;
 import com.badlogic.gdx.graphics.Texture;
 import com.badlogic.gdx.graphics.Texture.TextureFilter;
+import com.badlogic.gdx.graphics.g2d.BitmapFont;
 import com.badlogic.gdx.graphics.g2d.Sprite;
 import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.graphics.g2d.TextureRegion;
@@ -21,6 +23,9 @@ import com.badlogic.gdx.graphics.g3d.ModelBatch;
 import com.badlogic.gdx.graphics.g3d.ModelInstance;
 import com.badlogic.gdx.graphics.g3d.decals.Decal;
 import com.badlogic.gdx.graphics.g3d.decals.DecalBatch;
+import com.badlogic.gdx.graphics.g3d.lights.BaseLight;
+import com.badlogic.gdx.graphics.g3d.lights.Lights;
+import com.badlogic.gdx.graphics.g3d.lights.PointLight;
 import com.badlogic.gdx.graphics.g3d.utils.AnimationController;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
@@ -46,6 +51,13 @@ public class Tts implements ApplicationListener {
 		static STATES state;
 		
 		static float tpf;
+		
+		//Game variables that affect gameplay.  (Stats)
+		static int power; //Strength of player shots
+		static int level; //Affects enemy HP and type, as well as 
+		static int speed; //Speed of player acceleration
+		static int skill; //Affects what abilities are available
+		static int distance; //This is the distance the player has travelled forwards
 	}
 	
 	static class fadefilter {
@@ -64,6 +76,8 @@ public class Tts implements ApplicationListener {
 	PerspectiveCamera cam;
 	ModelInstance mdiPlayer;
 
+	Lights litGround;
+	
 	ModelInstance mdiSky;
 	Model mdlGround;
 	ModelInstance[] mdiGround;
@@ -71,8 +85,10 @@ public class Tts implements ApplicationListener {
 	final int numGroundLength = 800;
 	Model cube;
 	Model mdlUfoR;
+	Model mdlShot;
+	Model mdlPumpkin;
 	ArrayList<ModelInstance> instances;
-	ArrayList<GameObject> ufos;
+	ArrayList<GameObject> pumpkins;
 	ArrayList<GameObject> shots;
 	
 	SpriteBatch spriteBatch;
@@ -98,8 +114,12 @@ public class Tts implements ApplicationListener {
 		var.assets.load("3d/sky.g3dj", Model.class);
 		var.assets.load("3d/cube.g3dj", Model.class);
 		var.assets.load("3d/ufoR.g3dj", Model.class);
+		var.assets.load("3d/pumpkinO.g3dj", Model.class);
+		var.assets.load("3d/shot.g3dj", Model.class);
 		
 		var.assets.load("2d/tex.png", Texture.class);
+		var.assets.load("2d/cw.png", Texture.class);
+		var.assets.load("2d/ccw.png", Texture.class);
 		var.assets.load("2d/title.png", Texture.class);
 		var.assets.load("2d/filter.png", Texture.class);
 		fadefilter.fltFilterAlpha = 1;
@@ -110,6 +130,10 @@ public class Tts implements ApplicationListener {
 		
 		stateMenu = new MENU();
 		stateGame = new GAME();
+		
+		litGround = new Lights();
+		litGround.ambientLight.set(Color.WHITE);
+		litGround.fog = new Color(54f/255f, 49f/255f, 68f/255f, 1);
 	}
 
 	public void recreate() {
@@ -137,7 +161,8 @@ public class Tts implements ApplicationListener {
 		
 		cube = var.assets.get("3d/cube.g3dj", Model.class);
 		mdlUfoR = var.assets.get("3d/ufoR.g3dj", Model.class);
-		
+		mdlShot = var.assets.get("3d/shot.g3dj", Model.class);
+		mdlPumpkin = var.assets.get("3d/pumpkinO.g3dj", Model.class);
 		
 		stateMenu.init();
 		stateGame.init();
@@ -163,16 +188,16 @@ public class Tts implements ApplicationListener {
 			}
 		} else {
 			Gdx.gl.glViewport(0,0,var.w,var.h);
-			Gdx.gl.glClearColor(0.3137f, 0.6824f, 0.8f, 1);
+			Gdx.gl.glClearColor(54f/255f, 49f/255f, 68f/255f, 1);
 			Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
 						
 			animController.update(Gdx.graphics.getDeltaTime());
 			 
 			modelBatch.begin(cam);
 			
-			//modelBatch.render(mdiSky);
+			modelBatch.render(mdiSky);
 			for(ModelInstance grndInstance : mdiGround) {
-				modelBatch.render(grndInstance);
+				modelBatch.render(grndInstance, litGround);
 				grndInstance.transform.translate(0, 0, -5);
 				if(grndInstance.transform.getValues()[14] < -numGroundLength){
 					grndInstance.transform.translate(0,0,numGroundLength * numGround);
@@ -242,6 +267,10 @@ public class Tts implements ApplicationListener {
 		final int WALL1GAP1 = 3;
 		final int BOSS = 4;
 		
+		Sprite sprControlLeft; //Sprite for turning clockwise
+		Sprite sprControlRight; //Sprite for turning counter clockwise
+		BitmapFont bmfGameUi; //Font for displaying in game text
+		
 		public void resetPtime() {
 			for(int i = 0; i < 64; i++) ptime[i] = 0;
 		}
@@ -259,19 +288,26 @@ public class Tts implements ApplicationListener {
 		
 		float shotCooldown = 0.3f;
 		
+		float tmrUiFade;
+		
 		public void init() {
 			cam = new PerspectiveCamera(55, var.w, var.h);
 			cam.position.set(0, -19, 18);
 			cam.lookAt(Vector3.Z);
 			cam.near = 0.1f;
-			cam.far = 1000f;
+			cam.far = 1600f;
 			cam.update();
 			
+			bmfGameUi = new BitmapFont();
+			
+			sprControlLeft = new Sprite(var.assets.get("2d/cw.png", Texture.class));
+			sprControlRight = new Sprite(var.assets.get("2d/ccw.png", Texture.class));
+			sprControlRight.setPosition(var.w - sprControlRight.getWidth(), 0);
 			reinit();
 		}
 		public void reinit() {
 			instances = new ArrayList<ModelInstance>();
-			ufos = new ArrayList<GameObject>();
+			pumpkins = new ArrayList<GameObject>();
 			shots = new ArrayList<GameObject>();
 			
 			//Emitter state.  Defaults to RANDOM.
@@ -283,12 +319,17 @@ public class Tts implements ApplicationListener {
 			gtime[GAME] = 0;
 			
 			fadefilter.blnFilterOn = false;
+			
+			tmrUiFade = 0;
+			sprControlLeft.setColor(1, 1, 1, 0);
+			sprControlRight.setColor(1, 1, 1, 0);
+			bmfGameUi.setColor(1, 1, 1, 0);
 		}
 		public void playerFire() {
 			if(gtime[SHOT] > shotCooldown) {
 				gtime[SHOT] = 0;
 				GameObject obj = new GameObject(true, 10);
-				obj.mdi = new ModelInstance(cube);
+				obj.mdi = new ModelInstance(mdlShot);
 				
 				obj.polpos.set(player.polpos.x, player.polpos.y, player.pos.z);
 				obj.behaviours.add(new SimpleBehaviour(0,0,4));
@@ -335,7 +376,7 @@ public class Tts implements ApplicationListener {
 			for(int i = 0; i < 64; i++) {
 				gtime[i] += tpf;
 			}
-			System.out.println(player.polpos);
+
 			//After every interval estateChangeTime long, change the estate
 			if(gtime[ESTATE] > estateChangeTime) {
 				estate = chance(3,3);
@@ -390,7 +431,7 @@ public class Tts implements ApplicationListener {
 				if(ptime[2] > 2f) {
 					for(int i = 0; i < angles; i++) {
 						if( i != gap) {
-							ModelInstance cubeInstance = new ModelInstance(mdlUfoR);
+							ModelInstance cubeInstance = new ModelInstance(mdlPumpkin);
 							GameObject ufo = new GameObject(true,10);
 							//cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(i/angles * 6.283f) * 10, (float)Math.sin(i/angles * 6.283f) * 10, 1200));
 							//cubeInstance.transform.rotate(Vector3.Z,(i/angles*6.283f) * 360 / 6.283f + 90);
@@ -398,7 +439,7 @@ public class Tts implements ApplicationListener {
 							ufo.vel.set(0,0,-2);
 							ufo.polpos.set((i / angles * 62.83f), 0, 1200);
 							ufo.mdi = cubeInstance;
-							ufos.add(ufo);
+							pumpkins.add(ufo);
 						}
 					}
 					ptime[2] = 0;
@@ -419,18 +460,18 @@ public class Tts implements ApplicationListener {
 				break;
 			}
 			//Update and draw UFOs
-			Iterator<GameObject> ufoIter = ufos.iterator();
+			Iterator<GameObject> pumpkinIter = pumpkins.iterator();
 			Iterator<GameObject> shotIter;
-			GameObject curUfo;
+			GameObject curPumpkin;
 			GameObject curShot;
-			while(ufoIter.hasNext()) {
-				curUfo = ufoIter.next();
-				curUfo.update(tpf);
-				modelBatch.render(curUfo.mdi);
+			while(pumpkinIter.hasNext()) {
+				curPumpkin = pumpkinIter.next();
+				curPumpkin.update(tpf);
+				modelBatch.render(curPumpkin.mdi, litGround);
 				
 				//Test each ufo for collision with player
-				if(curUfo.boxCollides(player, 2)) {
-					ufoIter.remove();
+				if(curPumpkin.boxCollides(player, 2)) {
+					pumpkinIter.remove();
 					continue;
 				}
 				
@@ -438,7 +479,7 @@ public class Tts implements ApplicationListener {
 				while(shotIter.hasNext()) {
 					curShot = shotIter.next();
 					
-					if(curUfo.boxCollides(curShot, 4)) {
+					if(curPumpkin.boxCollides(curShot, 4)) {
 						shotIter.remove();
 						continue;
 					}
@@ -461,6 +502,27 @@ public class Tts implements ApplicationListener {
 			
 			handleInput(tpf);
 			
+			//Draw gui
+			if(tmrUiFade != 1) tmrUiFade += tpf;
+			if(tmrUiFade + tpf < 0.5f) {
+				sprControlLeft.setColor(1,1,1,tmrUiFade*2);
+				sprControlRight.setColor(1,1,1,tmrUiFade*2);
+				bmfGameUi.setColor(1,1,1,tmrUiFade*2);
+			} else if(tmrUiFade > 1) {
+				tmrUiFade = 1;
+				sprControlLeft.setColor(1,1,1,1);
+				sprControlRight.setColor(1,1,1,1);
+				bmfGameUi.setColor(1,1,1,1);
+			}
+			spriteBatch.begin();
+			sprControlLeft.draw(spriteBatch);
+			sprControlRight.draw(spriteBatch);
+			
+			bmfGameUi.draw(spriteBatch, "Power", 500, 50);
+			
+			spriteBatch.end();
+			
+			
 			//Check if faded out after attempting reinit
 			if(fadefilter.fltFilterAlpha == 1) {
 				reinit();
@@ -474,7 +536,7 @@ public class Tts implements ApplicationListener {
 		boolean blnShowTitle;
 		boolean blnTitleCompleted;
 		
-		Vector3 vecCamMenuPos = new Vector3(2,-17,7);
+		Vector3 vecCamMenuPos = new Vector3(8,-14,5);
 		Vector3 vecCamGamePos = new Vector3(0, 0, -50);
 		
 		float fltCamLerpValue;
@@ -493,7 +555,7 @@ public class Tts implements ApplicationListener {
 			blnTitleCompleted = false;
 			blnShowTitle = true;
 			
-			vecCamMenuFocus = new Vector3(0,-10,4);
+			vecCamMenuFocus = new Vector3(0,-11,1);
 			vecCamGameFocus = new Vector3(0,0,0);
 			
 			sprTitle = new Sprite(var.assets.get("2d/title.png", Texture.class));
@@ -503,6 +565,11 @@ public class Tts implements ApplicationListener {
 			sprTitle.setColor(1,1,1,fltTitleAlpha);
 			if(blnShowTitle) {
 				fadefilter.blnFilterOn = false;
+				if(!animController.current.animation.id.equals("pose")){
+					animController.animate("pose", -1, 1f, null, 0.8f);
+				}
+				//if(animController.current.time > 1)	animController.current.time = 1;
+				
 				if(fltCamLerpValue > fltCamLerpMenuLimit) {
 					if(fltTitleAlpha + fltTitleFadeRate < 1) {fltTitleAlpha += fltTitleFadeRate;} else {fltTitleAlpha = 1;}
 				}
@@ -515,6 +582,10 @@ public class Tts implements ApplicationListener {
 				cam.up.set(Vector3.Y);
 				cam.lookAt(vecCamMenuFocus);
 			} else {
+				if(animController.current.animation.id != "up"){
+					animController.animate("up", -1, 1f, null, 1f);
+				}
+				
 				if(fltTitleAlpha - fltTitleFadeRate > 0) {fltTitleAlpha -= fltTitleFadeRate; } else { fltTitleAlpha = 0; }
 				
 				if(fltCamLerpValue + fltCamLerpGameRate < 1) fltCamLerpValue += fltCamLerpGameRate; else fltCamLerpValue = 1;
