@@ -51,6 +51,14 @@ public class Tts implements ApplicationListener {
 		static STATES state;
 		
 		static float tpf;
+		static boolean flgDeathFreeze; //Used to freeze game updates
+		static float tmrDeathFreeze;
+		static boolean flgGameReset; //Game recycle
+		static float tmrGameReset;
+		final static float gameResetTime = 1f;
+		final static float deathFreezeTime = 1.5f; //Duration that time stands still after player death
+		
+		static boolean flgDead;
 		
 		//Game variables that affect gameplay.  (Stats)
 		static int power; //Strength of player shots
@@ -58,11 +66,14 @@ public class Tts implements ApplicationListener {
 		static int speed; //Speed of player acceleration
 		static int skill; //Affects what abilities are available
 		static int distance; //This is the distance the player has travelled forwards
+		
+		final static float baseGroundSpeed = -300f; //Base speed of ground and pumpkin scrolling
 	}
 	
 	static class fadefilter {
 		static Sprite sprFilter;
 		static float fltFilterAlpha = 1;
+		static float fltFilterBottom = 0;
 		static boolean blnFilterOn;
 		//True means filter shows; false is filter is transparent
 		
@@ -80,7 +91,7 @@ public class Tts implements ApplicationListener {
 	
 	ModelInstance mdiSky;
 	Model mdlGround;
-	ModelInstance[] mdiGround;
+	GameObject[] objGround;
 	final int numGround = 3;
 	final int numGroundLength = 800;
 	Model cube;
@@ -90,6 +101,8 @@ public class Tts implements ApplicationListener {
 	ArrayList<ModelInstance> instances;
 	ArrayList<GameObject> pumpkins;
 	ArrayList<GameObject> shots;
+	
+	SimpleBehaviour groundSpeed; //Speed things fly by at
 	
 	SpriteBatch spriteBatch;
 	Sprite sprTitle;
@@ -126,6 +139,9 @@ public class Tts implements ApplicationListener {
 		
 		var.state = var.STATES.LOAD;
 		
+		var.flgDeathFreeze = false;
+		var.flgDead = false;
+		
 		player = new GameObject(true, 10);
 		
 		stateMenu = new MENU();
@@ -134,6 +150,10 @@ public class Tts implements ApplicationListener {
 		litGround = new Lights();
 		litGround.ambientLight.set(Color.WHITE);
 		litGround.fog = new Color(54f/255f, 49f/255f, 68f/255f, 1);
+		
+		groundSpeed = new SimpleBehaviour(0,0,var.baseGroundSpeed);
+		
+		recreate();
 	}
 
 	public void recreate() {
@@ -151,12 +171,16 @@ public class Tts implements ApplicationListener {
 
 		Model mdlSky = var.assets.get("3d/sky.g3dj", Model.class);
 		mdiSky = new ModelInstance(mdlSky);
+		//Translate sky
+		mdiSky.transform.translate(-80,40,-40);
 		
 		Model mdlGround = var.assets.get("3d/ground.g3dj", Model.class);
-		mdiGround = new ModelInstance[numGround];
+		objGround = new GameObject[numGround];
 		for(int i = 0; i < numGround; i++) {
-			mdiGround[i] = new ModelInstance(mdlGround);
-			mdiGround[i].transform.translate(0,0,i * numGroundLength);
+			objGround[i] = new GameObject();
+			objGround[i].mdi = new ModelInstance(mdlGround);
+			objGround[i].translate(0,0,i * numGroundLength);
+			objGround[i].behaviours.add(groundSpeed);
 		}
 		
 		cube = var.assets.get("3d/cube.g3dj", Model.class);
@@ -177,7 +201,17 @@ public class Tts implements ApplicationListener {
 	//Update loop
 	@Override
 	public void render() {
-		var.tpf = Gdx.graphics.getDeltaTime();
+		if(!var.flgDeathFreeze) { 
+			var.tpf = Gdx.graphics.getDeltaTime();
+		} else {
+			var.tpf = 0;
+			var.tmrDeathFreeze += Gdx.graphics.getDeltaTime();
+			if(var.tmrDeathFreeze > var.deathFreezeTime){
+				var.flgDeathFreeze = false;
+				var.tmrDeathFreeze = 0;
+				player.behaviours.add(groundSpeed);
+			}
+		}
 		if(cam != null)
 			cam.update();
 		
@@ -190,36 +224,31 @@ public class Tts implements ApplicationListener {
 			Gdx.gl.glViewport(0,0,var.w,var.h);
 			Gdx.gl.glClearColor(54f/255f, 49f/255f, 68f/255f, 1);
 			Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
-						
-			animController.update(Gdx.graphics.getDeltaTime());
-			 
+			animController.update(var.tpf);
 			modelBatch.begin(cam);
-			
 			modelBatch.render(mdiSky);
-			for(ModelInstance grndInstance : mdiGround) {
-				modelBatch.render(grndInstance, litGround);
-				grndInstance.transform.translate(0, 0, -5);
-				if(grndInstance.transform.getValues()[14] < -numGroundLength){
-					grndInstance.transform.translate(0,0,numGroundLength * numGround);
+			for(GameObject grndInstance : objGround) {
+				modelBatch.render(grndInstance.mdi, litGround);
+				if(!var.flgDeathFreeze) grndInstance.update(var.tpf);
+				//reset ground position if it goes too far
+				if(grndInstance.pos.z < -numGroundLength){
+					grndInstance.translate(0,0,numGroundLength * numGround);
 				}
 			}
-			player.update(var.tpf);
+			if(!var.flgDeathFreeze) player.update(var.tpf);
 			modelBatch.render(player.mdi);
 			modelBatch.end();
-			
 			if(var.state == var.STATES.MENU) {
 				stateMenu.render(var.tpf);
 			} else if(var.state == var.STATES.GAME) {
 				stateGame.render(var.tpf);
 			}
-			
 			renderFilter();
 		}
-		
-
 	}
 
 	private void renderFilter() {
+		//Alpha is the minimum that the filter will fade.
 		if(fadefilter.blnFilterOn) {
 			if(fadefilter.fltFilterAlpha + fadefilter.fltFilterRate < 1) {
 				fadefilter.fltFilterAlpha += fadefilter.fltFilterRate;
@@ -254,7 +283,6 @@ public class Tts implements ApplicationListener {
 	private boolean isKeyPressed(int key){
 		return Gdx.input.isKeyPressed(key);
 	}
-
 	//Rolls a die with 'choices' number of sides, returns int
     public int chance(int min, int max) {
         return min + (int)(Math.random() * ((max - min) + 1));
@@ -271,23 +299,20 @@ public class Tts implements ApplicationListener {
 		Sprite sprControlRight; //Sprite for turning counter clockwise
 		BitmapFont bmfGameUi; //Font for displaying in game text
 		
+		boolean flgPostGame;
+		
 		public void resetPtime() {
 			for(int i = 0; i < 64; i++) ptime[i] = 0;
 		}
 		
 		int estate;
-		
 		float[] ptime;//Pattern times
-		
 		float[] gtime;//Game times
 		final int GAME = 0;
 		final int ESTATE = 1;
 		final int SHOT = 2;
-		
-		final int estateChangeTime = 200; 
-		
+		final int estateChangeTime = 200;
 		float shotCooldown = 0.3f;
-		
 		float tmrUiFade;
 		
 		public void init() {
@@ -324,6 +349,10 @@ public class Tts implements ApplicationListener {
 			sprControlLeft.setColor(1, 1, 1, 0);
 			sprControlRight.setColor(1, 1, 1, 0);
 			bmfGameUi.setColor(1, 1, 1, 0);
+			
+			player.reset();
+			player.behaviours.removeValue(groundSpeed, true);
+			var.flgDead = false;
 		}
 		public void playerFire() {
 			if(gtime[SHOT] > shotCooldown) {
@@ -332,7 +361,8 @@ public class Tts implements ApplicationListener {
 				obj.mdi = new ModelInstance(mdlShot);
 				
 				obj.polpos.set(player.polpos.x, player.polpos.y, player.pos.z);
-				obj.behaviours.add(new SimpleBehaviour(0,0,4));
+				obj.behaviours.add(new SimpleBehaviour(0,0,240));
+				obj.dmg = 1;
 				shots.add(obj);
 			}
 		}
@@ -343,13 +373,13 @@ public class Tts implements ApplicationListener {
 			if(isKeyPressed(Keys.LEFT)) {
 				//player.pos.x += 1f;
 				//mdiPlayer.transform.rotate(0,1,0,-4);
-				player.acc.set(-0.01f,0,0);
+				player.acc.set(-0.6f,0,0);
 				if(animController.current.animation.id != "right"){
 					//animController.animate("right", -1, 1f, null, 0.5f);
 				}
 			} else if(isKeyPressed(Keys.RIGHT)) {
 				//mdiPlayer.transform.rotate(0,1,0,4);
-				player.acc.set(0.01f,0,0);
+				player.acc.set(0.6f,0,0);
 				if(animController.current.animation.id != "left"){
 					//animController.animate("left", -1, 1f, null, 0.5f);
 				}
@@ -371,19 +401,7 @@ public class Tts implements ApplicationListener {
 				}
 			}
 		}
-		public void render(float tpf) {
-			//Update all game timers
-			for(int i = 0; i < 64; i++) {
-				gtime[i] += tpf;
-			}
-
-			//After every interval estateChangeTime long, change the estate
-			if(gtime[ESTATE] > estateChangeTime) {
-				estate = chance(3,3);
-				gtime[ESTATE] = 0;
-				resetPtime();
-			}
-			
+		public void spawn(float tpf) {
 			//spawn bullets
 			switch(estate) {
 			case RANDOM:
@@ -430,16 +448,17 @@ public class Tts implements ApplicationListener {
 				int gap = chance(0,15);
 				if(ptime[2] > 2f) {
 					for(int i = 0; i < angles; i++) {
-						if( i != gap) {
+						if(i != gap) {
 							ModelInstance cubeInstance = new ModelInstance(mdlPumpkin);
-							GameObject ufo = new GameObject(true,10);
+							GameObject pumpkin = new GameObject(true,10);
 							//cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(i/angles * 6.283f) * 10, (float)Math.sin(i/angles * 6.283f) * 10, 1200));
 							//cubeInstance.transform.rotate(Vector3.Z,(i/angles*6.283f) * 360 / 6.283f + 90);
 							//instances.add(cubeInstance);
-							ufo.vel.set(0,0,-2);
-							ufo.polpos.set((i / angles * 62.83f), 0, 1200);
-							ufo.mdi = cubeInstance;
-							pumpkins.add(ufo);
+							pumpkin.behaviours.add(groundSpeed);
+							pumpkin.polpos.set((i / angles * 62.83f), 0, 1200);
+							pumpkin.mdi = cubeInstance;
+							pumpkin.hp = 3;
+							pumpkins.add(pumpkin);
 						}
 					}
 					ptime[2] = 0;
@@ -459,6 +478,30 @@ public class Tts implements ApplicationListener {
 			default:
 				break;
 			}
+		}
+		public void render(float tpf) {
+			//Update all game timers
+			for(int i = 0; i < 64; i++) {
+				gtime[i] += tpf;
+			}
+
+			if(!var.flgDeathFreeze && var.flgDead && player.pos.z < -230) {
+				if(!fadefilter.blnFilterOn){
+					fadefilter.blnFilterOn = true;
+				}
+			}
+			//After every interval estateChangeTime long, change the estate
+			if(gtime[ESTATE] > estateChangeTime) {
+				estate = chance(3,3);
+				gtime[ESTATE] = 0;
+				resetPtime();
+			}
+			
+			//Only spawn new pumpkins if the player isn't dead.
+			if(!var.flgDead) {
+				spawn(tpf);
+			}
+			
 			//Update and draw UFOs
 			Iterator<GameObject> pumpkinIter = pumpkins.iterator();
 			Iterator<GameObject> shotIter;
@@ -470,19 +513,37 @@ public class Tts implements ApplicationListener {
 				modelBatch.render(curPumpkin.mdi, litGround);
 				
 				//Test each ufo for collision with player
-				if(curPumpkin.boxCollides(player, 2)) {
+				if(!var.flgDead && curPumpkin.boxCollides(player, 2)) {
 					pumpkinIter.remove();
+					//Player hit
+					if(!var.flgDeathFreeze) {
+						var.flgDeathFreeze = true;
+						var.flgDead = true;
+						player.behaviours.clear();
+						//player.vel.scl(0);
+						//player.acc.scl(0);
+					}
 					continue;
 				}
 				
 				shotIter = shots.iterator();
 				while(shotIter.hasNext()) {
 					curShot = shotIter.next();
-					
+					boolean pumpRemoved = false;
 					if(curPumpkin.boxCollides(curShot, 4)) {
+						curPumpkin.takeDamage(curShot.dmg);
+						
 						shotIter.remove();
+						//Remove the shot, deal damage to the pumpkin
+						
+						if(curPumpkin.hp <= 0) {
+							pumpkinIter.remove();
+							pumpRemoved = true;
+							continue;
+						}
 						continue;
 					}
+					if(pumpRemoved) continue;
 				}
 			}
 			
@@ -518,14 +579,17 @@ public class Tts implements ApplicationListener {
 			sprControlLeft.draw(spriteBatch);
 			sprControlRight.draw(spriteBatch);
 			
-			bmfGameUi.draw(spriteBatch, "Power", 500, 50);
+			bmfGameUi.draw(spriteBatch, "Power", 10, var.h - 10);
+			bmfGameUi.draw(spriteBatch, "Skill", 10, var.h - 40);
+			bmfGameUi.draw(spriteBatch, "Level", 10, var.h - 70);
 			
 			spriteBatch.end();
-			
 			
 			//Check if faded out after attempting reinit
 			if(fadefilter.fltFilterAlpha == 1) {
 				reinit();
+				var.flgDead = false;
+				var.flgGameReset = false;
 			}
 		}
 	}
@@ -560,6 +624,8 @@ public class Tts implements ApplicationListener {
 			
 			sprTitle = new Sprite(var.assets.get("2d/title.png", Texture.class));
 			sprTitle.setPosition(var.w/2f - (sprTitle.getWidth()/2f), var.h / 3f - (sprTitle.getHeight()/2f));
+			float widthScale = var.w / sprTitle.getWidth();
+			sprTitle.setScale(widthScale);
 		}
 		public void render(float tpf) {
 			sprTitle.setColor(1,1,1,fltTitleAlpha);

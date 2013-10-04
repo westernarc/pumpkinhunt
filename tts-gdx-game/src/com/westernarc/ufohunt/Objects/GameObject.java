@@ -7,12 +7,18 @@ import com.westernarc.ufohunt.Behaviours.Behaviour;
 
 public class GameObject {
 	public boolean polar = false;
-	public float radius = 0;
 	public ModelInstance mdi;
+	public float radius;
 	public Vector3 pos;
 	public Vector3 polpos;
 	public Vector3 vel;
 	public Vector3 acc;
+	public int hp;//Hp of object before dying
+	public int dmg;//Damage object deals
+	public void takeDamage(int dmg) {
+		hp -= dmg;
+		if(hp < 0) hp = 0;
+	}
 	
 	//List of behaviours that affect this game object
 	public Array<Behaviour> behaviours;
@@ -33,19 +39,27 @@ public class GameObject {
 	public Vector3 rot;
 	
 	float angle = 0;
-	
+	float tiltAngle = 0;//Angle of rotational tilt
+	float tiltRate = 0.02f;
+	public void reset(){
+		polpos.set(0,0,0);
+		vel.set(0,0,0);
+		acc.set(0,0,0);
+		tiltAngle = 0;
+		angle = 0;
+	}
 	public GameObject() {
 		pos = new Vector3();
 		polpos = new Vector3();
 		vel = new Vector3();
 		acc = new Vector3();
-		
 		radius = 0;
 		angle = 0;
-		
+		tiltAngle = 0;
 		behaviours = new Array<Behaviour>();
+		//Have at least 1 hp for every object
+		hp = 1;
 	}
-	
 	//Create a game object thats polar
 	public GameObject(boolean polar, float radius) {
 		this();
@@ -53,8 +67,16 @@ public class GameObject {
 		this.radius = radius;
 	}
 	public void update(float tpf) {
-		vel.add(acc);
-		
+		vel.add(acc.scl(tpf));
+		if(behaviours.size > 0) {
+			for(Behaviour b : behaviours) {
+				acc.add(b.modAcc.cpy().scl(tpf));
+				vel.add(b.modVel.cpy().scl(tpf));
+				pos.add(b.modPos.cpy().scl(tpf));
+				polpos.add(b.modPos.cpy().scl(tpf));
+				b.update(tpf);
+			}
+		}
 		//If this is a polar object, convert its position on each update
 		if(!polar) {
 			pos.add(vel);
@@ -70,18 +92,13 @@ public class GameObject {
 			
 			pos.x = (float)Math.sin(angle) * radius;
 			pos.y = -(float)Math.cos(angle) * radius;
+		}	
+		if(tiltAngle - tiltRate > vel.x * 2) {
+			tiltAngle -= tiltRate;
+		} else if(tiltAngle + tiltRate < vel.x * 2) {
+			tiltAngle += tiltRate;
 		}
-		
-		if(behaviours.size > 0) {
-			for(Behaviour b : behaviours) {
-				acc.add(b.modAcc);
-				vel.add(b.modVel);
-				pos.add(b.modPos);
-				b.update(tpf);
-			}
-		}
-		
-		mdi.transform.setToRotation(Vector3.Z, ((angle - vel.x*2)* 360f / TWOPI));
+		mdi.transform.setToRotation(Vector3.Z, ((angle - tiltAngle)* 360f / TWOPI));
 		mdi.transform.setTranslation(pos);
 	}
 	
@@ -107,9 +124,10 @@ public class GameObject {
 			return false;
 		}
 	}
-	
-	public static void main(String[] args) {
-		GameObject test = new GameObject(true, 10);
-		System.out.println(test.dist(15, 5f));
+	public void translate(float x, float y, float z) {
+		pos.add(x,y,z);
+	}
+	public void translate(Vector3 v) {
+		pos.add(v);
 	}
 }
