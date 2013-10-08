@@ -29,7 +29,7 @@ import com.badlogic.gdx.graphics.g3d.lights.PointLight;
 import com.badlogic.gdx.graphics.g3d.utils.AnimationController;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
-import com.westernarc.ufohunt.Behaviours.SimpleBehaviour;
+import com.westernarc.ufohunt.Behaviours.*;
 import com.westernarc.ufohunt.Objects.GameObject;
 import com.westernarc.ufohunt.Objects.Player;
 
@@ -98,6 +98,7 @@ public class Tts implements ApplicationListener {
 	Model mdlUfoR;
 	Model mdlShot;
 	Model mdlPumpkin;
+	Model mdlBullet;
 	ArrayList<ModelInstance> instances;
 	ArrayList<GameObject> pumpkins;
 	ArrayList<GameObject> shots;
@@ -129,7 +130,7 @@ public class Tts implements ApplicationListener {
 		var.assets.load("3d/ufoR.g3dj", Model.class);
 		var.assets.load("3d/pumpkinO.g3dj", Model.class);
 		var.assets.load("3d/shot.g3dj", Model.class);
-		
+		var.assets.load("3d/bulletG.g3dj", Model.class);
 		var.assets.load("2d/tex.png", Texture.class);
 		var.assets.load("2d/cw.png", Texture.class);
 		var.assets.load("2d/ccw.png", Texture.class);
@@ -187,7 +188,7 @@ public class Tts implements ApplicationListener {
 		mdlUfoR = var.assets.get("3d/ufoR.g3dj", Model.class);
 		mdlShot = var.assets.get("3d/shot.g3dj", Model.class);
 		mdlPumpkin = var.assets.get("3d/pumpkinO.g3dj", Model.class);
-		
+		mdlBullet = var.assets.get("3d/bulletG.g3dj", Model.class);
 		stateMenu.init();
 		stateGame.init();
 		
@@ -336,7 +337,7 @@ public class Tts implements ApplicationListener {
 			shots = new ArrayList<GameObject>();
 			
 			//Emitter state.  Defaults to RANDOM.
-			estate = WALL1GAP1;
+			estate = BOSS;
 			//Initialize array of pattern timer temp variables
 			ptime = new float[64];
 			gtime = new float[64];
@@ -417,22 +418,16 @@ public class Tts implements ApplicationListener {
 				//1: angle 2
 				//2: spawn interval 1
 				//3: spawn interval 2
-				ptime[0] += tpf * 10f;
+				ptime[0] += tpf * 13f;
 				ptime[1] += tpf * 10f;
 				ptime[2] += tpf;
 				
-				if(ptime[2] > 0.05f) {
-					ModelInstance cubeInstance = new ModelInstance(mdlUfoR);
+				if(ptime[2] > 0.05f) {					
+					addPumpkin(mdlPumpkin, ptime[0], 3, groundSpeed);				
+					addPumpkin(mdlPumpkin, ptime[0] + 5, 3, groundSpeed);
 					
-					cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(ptime[0]) * 10, (float)Math.sin(ptime[0]) * 10, 1200));
-					cubeInstance.transform.rotate(Vector3.Z,(ptime[0]) * 360 / 6.283f + 90);
-					instances.add(cubeInstance);
-					
-					
-					cubeInstance = new ModelInstance(mdlUfoR);
-					cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(ptime[0]+ 3.14f) * 10, (float)Math.sin(ptime[0] + 3.14f) * 10, 1200));
-					cubeInstance.transform.rotate(Vector3.Z,ptime[0] * 360 / 3.14f);
-					//instances.add(cubeInstance);
+					addPumpkin(mdlPumpkin, ptime[0] + 32, 3, groundSpeed);				
+					addPumpkin(mdlPumpkin, ptime[0] + 35, 3, groundSpeed);
 					ptime[2] = 0;
 				}
 				
@@ -451,9 +446,6 @@ public class Tts implements ApplicationListener {
 						if(i != gap) {
 							ModelInstance cubeInstance = new ModelInstance(mdlPumpkin);
 							GameObject pumpkin = new GameObject(true,10);
-							//cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(i/angles * 6.283f) * 10, (float)Math.sin(i/angles * 6.283f) * 10, 1200));
-							//cubeInstance.transform.rotate(Vector3.Z,(i/angles*6.283f) * 360 / 6.283f + 90);
-							//instances.add(cubeInstance);
 							pumpkin.behaviours.add(groundSpeed);
 							pumpkin.polpos.set((i / angles * 62.83f), 0, 1200);
 							pumpkin.mdi = cubeInstance;
@@ -466,18 +458,97 @@ public class Tts implements ApplicationListener {
 				
 				break;
 			case BOSS:
-				if(instances.size() == 0) {
-					ModelInstance bossInstance = new ModelInstance(mdlUfoR);
-					bossInstance.transform.scale(8, 8, 8);
-					bossInstance.transform.setTranslation(new Vector3(0,-10,1200));
-					instances.add(bossInstance);
+				if(pumpkins.size() == 0) {
+					GameObject boss = addPumpkin(mdlPumpkin, 0, 100);
+					boss.behaviours.clear();
+					boss.addBehaviour(new Behaviour() {
+						{
+							modPos.set(0,0,-300);
+						}
+						@Override
+						public void update(float tpf) {
+							System.out.println(parent.pos.z);
+							if(parent.pos.z > 100) {
+								modPos.set(0,0,-((parent.pos.z - 100f) / 100f)*300);
+							} else {
+								modPos.set(0,0,0);
+							}
+						}
+					});
+				} else {
+					ptime[0] += tpf * 13f;
+					ptime[1] += tpf * 10f;
+					ptime[2] += tpf;
+					
+					if(ptime[2] > 3f) {		
+						Vector3 targ1 = new Vector3(player.polpos).add(10,0,0);
+						Vector3 targ2 = new Vector3(player.polpos).add(-10,0,0);
+						if(targ2.x <= 0) targ2.x += GameObject.TWOPI * player.radius;
+						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ1, 0.4f);
+						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ1, 0.45f);
+						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ1, 0.5f);
+						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ1, 0.55f);
+						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ1, 0.6f);
+						
+						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ2, 0.4f);
+						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ2, 0.45f);
+						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ2, 0.5f);
+						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ2, 0.55f);
+						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ2, 0.6f);
+
+						//shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), player.polpos.cpy().add(-10,0,0), 40);
+						//shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), player.polpos.cpy().add(10,0,0), 40);
+						ptime[2] = 0;
+					}
 				}
+				/*
+				ptime[0] += tpf * 13f;
+				ptime[1] += tpf * 10f;
+				ptime[2] += tpf;
+				
+				if(ptime[2] > 0.5f) {					
+					addPumpkin(mdlPumpkin, ptime[0], 3, groundSpeed);				
+					addPumpkin(mdlPumpkin, ptime[0] + 5, 3, groundSpeed);
+					
+					addPumpkin(mdlPumpkin, -ptime[0] + 32, 3, groundSpeed);				
+					addPumpkin(mdlPumpkin, -ptime[0] + 35, 3, groundSpeed);
+					ptime[2] = 0;
+				}*/
 				break;
 			case OFF:
 				break;
 			default:
 				break;
 			}
+		}
+		public GameObject addPumpkin(Model mdlP, float x, int hp) {
+			GameObject pumpkin = new GameObject(true,10);
+			pumpkin.behaviours.add(groundSpeed);
+			pumpkin.polpos.set(x, 0, 1200);
+			pumpkin.mdi = new ModelInstance(mdlP);
+			pumpkin.hp = hp;
+			pumpkins.add(pumpkin);
+			return pumpkin;
+		}
+		public GameObject addPumpkin(Model mdlP, float x, int hp, Behaviour be) {
+			GameObject pumpkin = addPumpkin(mdlP, x, hp);
+			pumpkin.behaviours.add(be);
+			return pumpkin;
+		}
+		public GameObject shootPumpkin(Model mdlP, int hp, Vector3 orig, Vector3 target, float speed) {
+			GameObject pumpkin = addPumpkin(mdlP, orig.x, hp);
+			pumpkin.polpos.z = orig.z;
+			pumpkin.behaviours.clear();
+			SimpleBehaviour sb;
+			
+			//Calculate distance 
+			if(pumpkin.checkDist(target) == GameObject.CW){
+				sb = new SimpleBehaviour(pumpkin.dist(target)*speed,0,-orig.z*speed);
+			} else {
+				sb = new SimpleBehaviour(-pumpkin.dist(target)*speed,0,- orig.z*speed);
+			}
+			pumpkin.addBehaviour(sb);
+			return pumpkin;
 		}
 		public void render(float tpf) {
 			//Update all game timers

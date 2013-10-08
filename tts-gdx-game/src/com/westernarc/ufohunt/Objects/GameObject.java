@@ -106,14 +106,28 @@ public class GameObject {
 	public static boolean CW = true;
 	//Get the distance across the tube's surface
 	//true is cw, false is ccw
-	public boolean dist(float x1, float x2) {
+	public float dist(float x1, float x2) {
+		return checkDist(x1, x2) ? (float)Math.abs(x1 - x2) : (float)(radius * Math.PI * 2 - Math.max(x1, x2)) + Math.min(x1, x2);
+	}
+	public boolean checkDist(float x1, float x2) {
 		if(Math.abs(x1 - x2) < (radius * Math.PI * 2 - Math.max(x1, x2)) + Math.min(x1, x2) ) {
 			return CW;
 		} else {
 			return CCW;
 		}
 	}
-	
+	public float dist(GameObject target) {
+		return dist(this.polpos.x, target.polpos.x);
+	}
+	public float dist(Vector3 target) {
+		return dist(this.polpos.x, target.x);
+	}
+	public boolean checkDist(GameObject target) {
+		return checkDist(this.polpos.x, target.polpos.x);
+	}
+	public boolean checkDist(Vector3 target) {
+		return checkDist(this.polpos.x, target.x);
+	}
 	//Simple box collision method
 	public boolean boxCollides(GameObject obj, float dist) {
 		if(Math.abs(pos.x - obj.pos.x) < dist &&
@@ -129,5 +143,9 @@ public class GameObject {
 	}
 	public void translate(Vector3 v) {
 		pos.add(v);
+	}
+	public void addBehaviour(Behaviour b) {
+		b.parent = this;
+		behaviours.add(b);
 	}
 }
