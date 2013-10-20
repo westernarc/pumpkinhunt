@@ -14,12 +14,19 @@ public class GameObject {
 	public Vector3 vel;
 	public Vector3 acc;
 	public int hp;//Hp of object before dying
+	public int maxHp;
 	public int dmg;//Damage object deals
+	public boolean invuln;
 	public void takeDamage(int dmg) {
-		hp -= dmg;
-		if(hp < 0) hp = 0;
+		if(!invuln) {
+			hp -= dmg;
+			if(hp < 0) hp = 0;
+		}
 	}
-	
+	public void setMaxHp(int maxHp) {
+		this.maxHp = maxHp;
+		this.hp = maxHp;
+	}
 	//List of behaviours that affect this game object
 	public Array<Behaviour> behaviours;
 	
@@ -59,6 +66,7 @@ public class GameObject {
 		behaviours = new Array<Behaviour>();
 		//Have at least 1 hp for every object
 		hp = 1;
+		invuln = false;
 	}
 	//Create a game object thats polar
 	public GameObject(boolean polar, float radius) {
@@ -99,6 +107,7 @@ public class GameObject {
 			tiltAngle += tiltRate;
 		}
 		mdi.transform.setToRotation(Vector3.Z, ((angle - tiltAngle)* 360f / TWOPI));
+		mdi.transform.rotate(Vector3.Y, (Math.min(0.1f,Math.max(-0.1f,vel.x)) * 100f));
 		mdi.transform.setTranslation(pos);
 	}
 	

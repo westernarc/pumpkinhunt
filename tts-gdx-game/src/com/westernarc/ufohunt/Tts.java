@@ -1,6 +1,7 @@
 package com.westernarc.ufohunt;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Iterator;
 
 import com.badlogic.gdx.ApplicationListener;
@@ -26,6 +27,7 @@ import com.badlogic.gdx.graphics.g3d.decals.DecalBatch;
 import com.badlogic.gdx.graphics.g3d.lights.BaseLight;
 import com.badlogic.gdx.graphics.g3d.lights.Lights;
 import com.badlogic.gdx.graphics.g3d.lights.PointLight;
+import com.badlogic.gdx.graphics.g3d.materials.ColorAttribute;
 import com.badlogic.gdx.graphics.g3d.utils.AnimationController;
 import com.badlogic.gdx.math.Vector3;
 import com.badlogic.gdx.utils.Array;
@@ -43,6 +45,7 @@ public class Tts implements ApplicationListener {
 		static int w;
 		static int h;
 		
+		static Color clrSky = new Color(105f/255f, 95f/255f, 134f/255f, 1);
 		static float gameSize = 13;
 		
 		static AssetManager assets;
@@ -62,12 +65,14 @@ public class Tts implements ApplicationListener {
 		
 		//Game variables that affect gameplay.  (Stats)
 		static int power; //Strength of player shots
-		static int level; //Affects enemy HP and type, as well as 
+		static int level; //Affects enemy HP and type, as well as
+		static int phase; //Each change in pattern adds to phase
 		static int speed; //Speed of player acceleration
 		static int skill; //Affects what abilities are available
 		static int distance; //This is the distance the player has travelled forwards
+		static int xp; //Experience
 		
-		final static float baseGroundSpeed = -300f; //Base speed of ground and pumpkin scrolling
+		final static float baseGroundSpeed = -200f; //Base speed of ground and pumpkin scrolling
 	}
 	
 	static class fadefilter {
@@ -93,14 +98,15 @@ public class Tts implements ApplicationListener {
 	Model mdlGround;
 	GameObject[] objGround;
 	final int numGround = 3;
-	final int numGroundLength = 800;
+	final int numGroundLength = 1200;
 	Model cube;
 	Model mdlUfoR;
 	Model mdlShot;
 	Model mdlPumpkin;
 	Model mdlBullet;
 	ArrayList<ModelInstance> instances;
-	ArrayList<GameObject> pumpkins;
+	ArrayList<GameObject> arrPumpkins;
+	HashMap<String, GameObject> hshMappedPumpkins;
 	ArrayList<GameObject> shots;
 	
 	SimpleBehaviour groundSpeed; //Speed things fly by at
@@ -150,7 +156,7 @@ public class Tts implements ApplicationListener {
 		
 		litGround = new Lights();
 		litGround.ambientLight.set(Color.WHITE);
-		litGround.fog = new Color(54f/255f, 49f/255f, 68f/255f, 1);
+		litGround.fog = var.clrSky;
 		
 		groundSpeed = new SimpleBehaviour(0,0,var.baseGroundSpeed);
 		
@@ -173,7 +179,7 @@ public class Tts implements ApplicationListener {
 		Model mdlSky = var.assets.get("3d/sky.g3dj", Model.class);
 		mdiSky = new ModelInstance(mdlSky);
 		//Translate sky
-		mdiSky.transform.translate(-80,40,-40);
+		mdiSky.transform.translate(-400,140,-340);
 		
 		Model mdlGround = var.assets.get("3d/ground.g3dj", Model.class);
 		objGround = new GameObject[numGround];
@@ -223,7 +229,7 @@ public class Tts implements ApplicationListener {
 			}
 		} else {
 			Gdx.gl.glViewport(0,0,var.w,var.h);
-			Gdx.gl.glClearColor(54f/255f, 49f/255f, 68f/255f, 1);
+			Gdx.gl.glClearColor(var.clrSky.r, var.clrSky.g, var.clrSky.b, var.clrSky.a);
 			Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
 			animController.update(var.tpf);
 			modelBatch.begin(cam);
@@ -295,6 +301,8 @@ public class Tts implements ApplicationListener {
 		final int SPIRAL2 = 2;
 		final int WALL1GAP1 = 3;
 		final int BOSS = 4;
+		final int WEDGE = 5;
+		final int TUNNEL = 6;
 		
 		Sprite sprControlLeft; //Sprite for turning clockwise
 		Sprite sprControlRight; //Sprite for turning counter clockwise
@@ -302,12 +310,16 @@ public class Tts implements ApplicationListener {
 		
 		boolean flgPostGame;
 		
-		public void resetPtime() {
-			for(int i = 0; i < 64; i++) ptime[i] = 0;
+		public void resetPvars() {
+			ptime = new float[64];
+			pflag = new boolean[64];
+			for(int i = 0; i < ptime.length; i++) ptime[i] = 0;
+			for(int i = 0; i < pflag.length; i++) pflag[i] = false;
 		}
 		
 		int estate;
 		float[] ptime;//Pattern times
+		boolean[] pflag;
 		float[] gtime;//Game times
 		final int GAME = 0;
 		final int ESTATE = 1;
@@ -333,15 +345,15 @@ public class Tts implements ApplicationListener {
 		}
 		public void reinit() {
 			instances = new ArrayList<ModelInstance>();
-			pumpkins = new ArrayList<GameObject>();
+			arrPumpkins = new ArrayList<GameObject>();
+			hshMappedPumpkins = new HashMap<String, GameObject>();
 			shots = new ArrayList<GameObject>();
 			
 			//Emitter state.  Defaults to RANDOM.
-			estate = BOSS;
+			estate = SPIRAL2;
 			//Initialize array of pattern timer temp variables
-			ptime = new float[64];
 			gtime = new float[64];
-			resetPtime();
+			resetPvars();
 			gtime[GAME] = 0;
 			
 			fadefilter.blnFilterOn = false;
@@ -354,6 +366,10 @@ public class Tts implements ApplicationListener {
 			player.reset();
 			player.behaviours.removeValue(groundSpeed, true);
 			var.flgDead = false;
+			/*
+			var.flgDead = false;
+			var.flgDeathFreeze = false;*/
+			var.phase = 1;
 		}
 		public void playerFire() {
 			if(gtime[SHOT] > shotCooldown) {
@@ -402,6 +418,17 @@ public class Tts implements ApplicationListener {
 				}
 			}
 		}
+		public void switchState(int nextState) {
+			resetPvars();
+			estate = nextState;
+			
+			//Every time state changes, add to phase
+			var.phase++;
+		}
+		//Choose next state based on level
+		public void nextState() {
+			switchState(chance(0,var.level));
+		}
 		public void spawn(float tpf) {
 			//spawn bullets
 			switch(estate) {
@@ -418,9 +445,33 @@ public class Tts implements ApplicationListener {
 				//1: angle 2
 				//2: spawn interval 1
 				//3: spawn interval 2
-				ptime[0] += tpf * 13f;
-				ptime[1] += tpf * 10f;
+				ptime[0] += tpf * ptime[4];
 				ptime[2] += tpf;
+				
+				//Orientation:
+				//var 3 is orientation timer
+				//flag 3 is orientation direction
+				//chance to switch orientations every 5 seconds
+				ptime[3] += tpf; 
+				if(ptime[3] > 3) {
+					pflag[3] = Math.random() >  0.5 ? true : false;
+					ptime[3] = 0;
+				}
+				
+				//Spiral rotation speed, var 4
+				if(pflag[3]) {
+					if(ptime[4] < 16) {
+						ptime[4] += tpf * 20;
+					} else {
+						ptime[4] = 16;
+					}
+				} else {
+					if(ptime[4] > -16) {
+						ptime[4] -= tpf * 20;
+					} else {
+						ptime[4] = -16;
+					}
+				}
 				
 				if(ptime[2] > 0.05f) {					
 					addPumpkin(mdlPumpkin, ptime[0], 3, groundSpeed);				
@@ -450,55 +501,182 @@ public class Tts implements ApplicationListener {
 							pumpkin.polpos.set((i / angles * 62.83f), 0, 1200);
 							pumpkin.mdi = cubeInstance;
 							pumpkin.hp = 3;
-							pumpkins.add(pumpkin);
+							arrPumpkins.add(pumpkin);
 						}
 					}
 					ptime[2] = 0;
 				}
 				
 				break;
+			case WEDGE:
+				//0: angle 1
+				//1: angle 2
+				//2: spawn interval 1
+				//3: spawn interval 2
+				ptime[0] += tpf;
+				ptime[4] += tpf;
+				ptime[1] += tpf * 9;
+				ptime[2] -= tpf * 9;
+				
+				if(ptime[1] > GameObject.TWOPI * 10) ptime[1] = 0;
+				if(ptime[2] < 0) ptime[2] = GameObject.TWOPI * 10;
+				if(ptime[0] > 3) {
+					ptime[0] = 0;
+					float opening = chance(0,31) * GameObject.TWOPI * 10 / 32f;
+					ptime[1] = opening;
+					ptime[2] = opening;
+				}
+				if(ptime[4] > 0.05f) {
+					if(pflag[0]) {
+						addPumpkin(mdlPumpkin, ptime[1], 5);
+						pflag[0] = !pflag[0];
+					} else {
+						addPumpkin(mdlPumpkin, ptime[2], 5);
+						pflag[0] = !pflag[0];
+					}
+					ptime[4] = 0;
+				}
+				break;
+			case TUNNEL:
+				ptime[0] += tpf;
+				ptime[1] += tpf;
+				
+				if(!pflag[0]) {
+					ptime[2] = chance(0,15);
+					ptime[3] = 0;
+					ptime[4] = 0;
+					pflag[0] = true;
+				}
+				
+				if(ptime[0] > 2) {
+					if(chance(0,1) == 1) {
+						ptime[2]++;
+						if(ptime[2] >= 16) ptime[2] = 0;
+					} else {
+						ptime[2]--;
+						if(ptime[2] <= 0) ptime[2] = 15;
+					}
+					
+					ptime[4] = chance(1,2);
+					ptime[0] = 0;
+				}
+				
+				System.out.println(ptime[2]);
+				if(ptime[1] > 0.15f) {
+					if(ptime[3] > ptime[4]) ptime[3]--;
+					else if(ptime[3] < ptime[4]) ptime[3]++;
+					
+					for(int i = 0; i < 16; i++) {
+						switch((int)ptime[3]) {
+						case 0:
+							if(i != ptime[2])addPumpkin(mdlPumpkin, i * GameObject.TWOPI * 10 / 16f, 2);
+							break;
+						case 1:
+							if(i != ptime[2] && 
+							((i + 1) > 16 ? i + 1 - 16 : i + 1) != ptime[2] && 
+							((i - 1) < 0 ? i - 1 + 16 : i - 1) != ptime[2])
+								addPumpkin(mdlPumpkin, i * GameObject.TWOPI * 10 / 16f, 2);
+							break;
+						case 2:
+							if(i != ptime[2] && 
+							((i + 1) > 16 ? i + 1 - 16 : i + 1) != ptime[2] && 
+							((i - 1) < 0 ? i - 1 + 16 : i - 1) != ptime[2] &&
+							((i + 2) > 16 ? i + 2 - 16 : i + 2) != ptime[2] && 
+							((i - 2) < 0 ? i - 2 + 16 : i - 2) != ptime[2])
+								addPumpkin(mdlPumpkin, i * GameObject.TWOPI * 10 / 16f, 2);
+							default:
+							if(i != ptime[2])addPumpkin(mdlPumpkin, i * GameObject.TWOPI * 10 / 16f, 2);
+						}
+						
+					}
+					ptime[1] = 0;
+				}
+				
+				break;
 			case BOSS:
-				if(pumpkins.size() == 0) {
-					GameObject boss = addPumpkin(mdlPumpkin, 0, 100);
+				if(!pflag[4] ) {
+					GameObject boss = addPumpkin(mdlPumpkin, 0, 10);
 					boss.behaviours.clear();
+					//Make behaviour that slows down and stops at 200f Z
 					boss.addBehaviour(new Behaviour() {
 						{
 							modPos.set(0,0,-300);
 						}
 						@Override
 						public void update(float tpf) {
-							System.out.println(parent.pos.z);
-							if(parent.pos.z > 100) {
-								modPos.set(0,0,-((parent.pos.z - 100f) / 100f)*300);
+							if(parent.pos.z > 200) {
+								modPos.set(0,0,-((parent.pos.z - 200f) / 200f)*300);
 							} else {
 								modPos.set(0,0,0);
 							}
 						}
 					});
+					hshMappedPumpkins.put("pmkBoss", boss);
+					pflag[4] = true;
 				} else {
+					GameObject boss = hshMappedPumpkins.get("pmkBoss");
 					ptime[0] += tpf * 13f;
 					ptime[1] += tpf * 10f;
 					ptime[2] += tpf;
-					
+					ptime[4] += tpf;
 					if(ptime[2] > 3f) {		
 						Vector3 targ1 = new Vector3(player.polpos).add(10,0,0);
 						Vector3 targ2 = new Vector3(player.polpos).add(-10,0,0);
-						if(targ2.x <= 0) targ2.x += GameObject.TWOPI * player.radius;
-						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ1, 0.4f);
-						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ1, 0.45f);
-						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ1, 0.5f);
-						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ1, 0.55f);
-						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ1, 0.6f);
 						
-						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ2, 0.4f);
-						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ2, 0.45f);
-						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ2, 0.5f);
-						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ2, 0.55f);
-						shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), targ2, 0.6f);
-
-						//shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), player.polpos.cpy().add(-10,0,0), 40);
-						//shootPumpkin(mdlBullet, 100, new Vector3(0,0,100), player.polpos.cpy().add(10,0,0), 40);
+						Vector3 bossVec = boss.polpos;
+						if(targ2.x <= 0) targ2.x += GameObject.TWOPI * player.radius;
+						
+						shootLine(mdlBullet, 100, bossVec, targ1, 0.6f, 12);
+						
+						shootLine(mdlBullet, 100, bossVec, targ2, 0.6f, 12);
+						
 						ptime[2] = 0;
+					}
+					if(ptime[4] > 1) {
+						Vector3 bossVec = boss.polpos;
+						
+						GameObject p1 = addPumpkin(mdlPumpkin, 0, 5);
+						p1.polpos.set(bossVec);
+						p1.behaviours.clear();
+						Behaviour b = new Behaviour() {
+							@Override
+							public void update(float tpf) {
+								modPos.set((float)Math.cos(parent.polpos.z * 3.1415f/200f) * 45, 0, -200);
+							}
+						};
+						p1.addBehaviour(b);
+						setTracking(p1);
+						
+						GameObject p2 = addPumpkin(mdlPumpkin, 0, 5);
+						p2.polpos.set(bossVec);
+						p2.behaviours.clear();
+						Behaviour b2 = new Behaviour() {
+							@Override
+							public void update(float tpf) {
+								modPos.set(-(float)Math.cos(parent.polpos.z * 3.1415f/200f) * 45, 0, -200);
+							}
+						};
+						p2.addBehaviour(b2);
+						setTracking(p2);
+						ptime[4] = 0;
+					}
+					
+					//Handle boss death
+					if(!pflag[5]) {
+						if(boss.hp < boss.maxHp / 2f) {
+							boss.behaviours.clear();
+							boss.behaviours.add(new AccelBehaviour(0,0,-100f));
+							boss.invuln = true;
+							pflag[5] = true;
+						}
+					}
+					
+					//If boss has spawned, boss has died, and boss has been deleted:
+					if(pflag[5]) {
+						if(!arrPumpkins.contains(hshMappedPumpkins.get("pmkBoss"))) {
+							hshMappedPumpkins.remove("pmkBoss");
+							nextState();
+						}
 					}
 				}
 				/*
@@ -521,13 +699,33 @@ public class Tts implements ApplicationListener {
 				break;
 			}
 		}
+		
+		//Add a tracking behaviour to the pumpkin.
+		public GameObject setTracking(GameObject p2) {
+			SimpleBehaviour sb2;
+			
+			//Calculate distance 
+			if(p2.checkDist(player.polpos) == GameObject.CW){
+				sb2 = new SimpleBehaviour(p2.dist(player),0,-1);
+			} else {
+				sb2 = new SimpleBehaviour(-p2.dist(player),0,-1);
+			}
+			p2.addBehaviour(sb2);
+			
+			return p2;
+		}
+		public GameObject addPumpkin(Model mdlP) {
+			GameObject pumpkin = new GameObject(true,10);
+			pumpkin.mdi = new ModelInstance(mdlP);
+			return pumpkin;
+		}
 		public GameObject addPumpkin(Model mdlP, float x, int hp) {
 			GameObject pumpkin = new GameObject(true,10);
 			pumpkin.behaviours.add(groundSpeed);
 			pumpkin.polpos.set(x, 0, 1200);
 			pumpkin.mdi = new ModelInstance(mdlP);
-			pumpkin.hp = hp;
-			pumpkins.add(pumpkin);
+			pumpkin.setMaxHp(hp);
+			arrPumpkins.add(pumpkin);
 			return pumpkin;
 		}
 		public GameObject addPumpkin(Model mdlP, float x, int hp, Behaviour be) {
@@ -550,12 +748,16 @@ public class Tts implements ApplicationListener {
 			pumpkin.addBehaviour(sb);
 			return pumpkin;
 		}
+		public void shootLine(Model mdlP, int hp, Vector3 orig, Vector3 target, float speed, int num) {
+			for(int i = 0; i < num; i++) {
+				shootPumpkin(mdlP, hp, orig, target, speed - (i * speed / 20));
+			}
+		}
 		public void render(float tpf) {
 			//Update all game timers
 			for(int i = 0; i < 64; i++) {
 				gtime[i] += tpf;
 			}
-
 			if(!var.flgDeathFreeze && var.flgDead && player.pos.z < -230) {
 				if(!fadefilter.blnFilterOn){
 					fadefilter.blnFilterOn = true;
@@ -565,7 +767,7 @@ public class Tts implements ApplicationListener {
 			if(gtime[ESTATE] > estateChangeTime) {
 				estate = chance(3,3);
 				gtime[ESTATE] = 0;
-				resetPtime();
+				resetPvars();
 			}
 			
 			//Only spawn new pumpkins if the player isn't dead.
@@ -574,16 +776,25 @@ public class Tts implements ApplicationListener {
 			}
 			
 			//Update and draw UFOs
-			Iterator<GameObject> pumpkinIter = pumpkins.iterator();
+			Iterator<GameObject> pumpkinIter = arrPumpkins.iterator();
 			Iterator<GameObject> shotIter;
 			GameObject curPumpkin;
 			GameObject curShot;
 			while(pumpkinIter.hasNext()) {
 				curPumpkin = pumpkinIter.next();
+				
+				//Remove the pumpkin if it flies past the player or falls down
+				if(curPumpkin.polpos.z < -50 || curPumpkin.polpos.y < -30) {
+					pumpkinIter.remove();
+					continue;
+				}
+				
 				curPumpkin.update(tpf);
 				modelBatch.render(curPumpkin.mdi, litGround);
 				
+
 				//Test each ufo for collision with player
+				/*
 				if(!var.flgDead && curPumpkin.boxCollides(player, 2)) {
 					pumpkinIter.remove();
 					//Player hit
@@ -595,26 +806,33 @@ public class Tts implements ApplicationListener {
 						//player.acc.scl(0);
 					}
 					continue;
-				}
+				}*/
 				
 				shotIter = shots.iterator();
 				while(shotIter.hasNext()) {
 					curShot = shotIter.next();
-					boolean pumpRemoved = false;
+					//boolean pumpRemoved = false;
 					if(curPumpkin.boxCollides(curShot, 4)) {
-						curPumpkin.takeDamage(curShot.dmg);
+						//Multiply curShot damage by player power
+						curPumpkin.takeDamage(curShot.dmg * (var.power + 1) );
 						
 						shotIter.remove();
 						//Remove the shot, deal damage to the pumpkin
 						
-						if(curPumpkin.hp <= 0) {
-							pumpkinIter.remove();
-							pumpRemoved = true;
+						if(curPumpkin.hp <= 0 && curPumpkin.polar) {
+							curPumpkin.polar = false;
+							//To dying pumpkins, add a behaviour that makes it pop up and fall down
+							// Juuustttt like in easter run, because I'm unoriginal and lazy
+							curPumpkin.vel.y = 0.7f;
+							curPumpkin.addBehaviour(new AccelBehaviour(0,-300,0));
+							curPumpkin.mdi.materials.first().set(new ColorAttribute(ColorAttribute.Diffuse,0,1,0,1));
+							//pumpkinIter.remove();
+							//pumpRemoved = true;
 							continue;
 						}
 						continue;
 					}
-					if(pumpRemoved) continue;
+					//if(pumpRemoved) continue;
 				}
 			}
 			
@@ -671,7 +889,8 @@ public class Tts implements ApplicationListener {
 		boolean blnShowTitle;
 		boolean blnTitleCompleted;
 		
-		Vector3 vecCamMenuPos = new Vector3(8,-14,5);
+		Vector3 vecCamMenuPos = new Vector3(6,-15,10);
+		Vector3 vecCamMenuUp = new Vector3(-0.1f,1,0.3f);
 		Vector3 vecCamGamePos = new Vector3(0, 0, -50);
 		
 		float fltCamLerpValue;
@@ -690,11 +909,11 @@ public class Tts implements ApplicationListener {
 			blnTitleCompleted = false;
 			blnShowTitle = true;
 			
-			vecCamMenuFocus = new Vector3(0,-11,1);
+			vecCamMenuFocus = new Vector3(0,-12,2.5f);
 			vecCamGameFocus = new Vector3(0,0,0);
 			
 			sprTitle = new Sprite(var.assets.get("2d/title.png", Texture.class));
-			sprTitle.setPosition(var.w/2f - (sprTitle.getWidth()/2f), var.h / 3f - (sprTitle.getHeight()/2f));
+			//sprTitle.setPosition(var.w/2f - (sprTitle.getWidth()/2f), var.h / 3f - (sprTitle.getHeight()/2f));
 			float widthScale = var.w / sprTitle.getWidth();
 			sprTitle.setScale(widthScale);
 		}
@@ -716,7 +935,7 @@ public class Tts implements ApplicationListener {
 					fltCamLerpValue = 1;
 				}
 				cam.position.lerp(vecCamMenuPos, fltCamLerpValue);
-				cam.up.set(Vector3.Y);
+				cam.up.set(vecCamMenuUp);
 				cam.lookAt(vecCamMenuFocus);
 			} else {
 				if(animController.current.animation.id != "up"){
@@ -743,5 +962,10 @@ public class Tts implements ApplicationListener {
 				fltCamLerpValue = 0;
 			}
 		}
+	}
+	//Returns true if inside the range specified by arguments
+	public boolean isBetween(int arg, int low, int hi) {
+		if(arg >= low && arg <= hi) return true;
+		else return false;
 	}
 }
