@@ -64,13 +64,12 @@ public class Tts implements ApplicationListener {
 		static boolean flgDead;
 		
 		//Game variables that affect gameplay.  (Stats)
-		static int power; //Strength of player shots
 		static int level; //Affects enemy HP and type, as well as
 		static int phase; //Each change in pattern adds to phase
 		static int speed; //Speed of player acceleration
-		static int skill; //Affects what abilities are available
-		static int distance; //This is the distance the player has travelled forwards
-		static int xp; //Experience
+		static float distance; //This is the distance the player has travelled forwards
+		static int kills; //Number of pumpkins killed; count on shooting them down
+		static int score;
 		
 		final static float baseGroundSpeed = -200f; //Base speed of ground and pumpkin scrolling
 	}
@@ -370,6 +369,10 @@ public class Tts implements ApplicationListener {
 			var.flgDead = false;
 			var.flgDeathFreeze = false;*/
 			var.phase = 1;
+			var.distance = 0;
+			var.level = 1;
+			var.kills = 0;
+			var.score = 0;
 		}
 		public void playerFire() {
 			if(gtime[SHOT] > shotCooldown) {
@@ -418,26 +421,37 @@ public class Tts implements ApplicationListener {
 				}
 			}
 		}
+		private void calculateLevel() {
+			//Formula for level: Based on score (from kills), distance, and phases cleared
+			var.level = var.kills/10 + Math.round(var.distance)/60 + var.phase;
+			var.score = var.kills + Math.round(var.distance) + var.phase * 1000;
+		}
 		public void switchState(int nextState) {
 			resetPvars();
 			estate = nextState;
 			
 			//Every time state changes, add to phase
 			var.phase++;
+			//Level up only
 		}
 		//Choose next state based on level
 		public void nextState() {
-			switchState(chance(0,var.level));
+			switchState(chance(1,Math.max(var.level, 6)));
 		}
 		public void spawn(float tpf) {
+			System.out.println(estate);
 			//spawn bullets
 			switch(estate) {
 			case RANDOM:
-				if(Math.random() < 0.08f) {
-					ModelInstance cubeInstance = new ModelInstance(cube);
-					float randAngle = (float)Math.random();
-					cubeInstance.transform.setTranslation(new Vector3((float)Math.cos(randAngle * 6.28f) * 10, (float)Math.sin(randAngle * 6.28) * 10, 1200));
-					instances.add(cubeInstance);
+				ptime[0] += tpf;
+				ptime[1] += tpf;
+				if(ptime[0] > 0.1f) {
+					addPumpkin(mdlPumpkin,(float)Math.random() * 62,4);
+					ptime[0] = 0;
+				}
+				if(ptime[1] > 10) {
+					if(Math.random() > 0.5) nextState();
+					ptime[1] -= 2;
 				}
 				break;
 			case SPIRAL2:
@@ -456,6 +470,15 @@ public class Tts implements ApplicationListener {
 				if(ptime[3] > 3) {
 					pflag[3] = Math.random() >  0.5 ? true : false;
 					ptime[3] = 0;
+					ptime[1]++;
+				}
+				
+				//var 1: number of orientation switches.  Past 3 switches, 50% each switch to go to next phase
+				if(ptime[1] > 3) {
+					if(Math.random() > 0.5) {
+						nextState();
+					}
+					ptime[1]--;
 				}
 				
 				//Spiral rotation speed, var 4
@@ -495,13 +518,7 @@ public class Tts implements ApplicationListener {
 				if(ptime[2] > 2f) {
 					for(int i = 0; i < angles; i++) {
 						if(i != gap) {
-							ModelInstance cubeInstance = new ModelInstance(mdlPumpkin);
-							GameObject pumpkin = new GameObject(true,10);
-							pumpkin.behaviours.add(groundSpeed);
-							pumpkin.polpos.set((i / angles * 62.83f), 0, 1200);
-							pumpkin.mdi = cubeInstance;
-							pumpkin.hp = 3;
-							arrPumpkins.add(pumpkin);
+							addPumpkin(mdlPumpkin, (i / angles * 62.83f), 3);
 						}
 					}
 					ptime[2] = 0;
@@ -773,6 +790,7 @@ public class Tts implements ApplicationListener {
 			//Only spawn new pumpkins if the player isn't dead.
 			if(!var.flgDead) {
 				spawn(tpf);
+				var.distance += tpf;  //Increase distance while player is alive
 			}
 			
 			//Update and draw UFOs
@@ -814,7 +832,7 @@ public class Tts implements ApplicationListener {
 					//boolean pumpRemoved = false;
 					if(curPumpkin.boxCollides(curShot, 4)) {
 						//Multiply curShot damage by player power
-						curPumpkin.takeDamage(curShot.dmg * (var.power + 1) );
+						curPumpkin.takeDamage(curShot.dmg);
 						
 						shotIter.remove();
 						//Remove the shot, deal damage to the pumpkin
@@ -825,9 +843,12 @@ public class Tts implements ApplicationListener {
 							// Juuustttt like in easter run, because I'm unoriginal and lazy
 							curPumpkin.vel.y = 0.7f;
 							curPumpkin.addBehaviour(new AccelBehaviour(0,-300,0));
-							curPumpkin.mdi.materials.first().set(new ColorAttribute(ColorAttribute.Diffuse,0,1,0,1));
+							curPumpkin.mdi.materials.first().set(new ColorAttribute(ColorAttribute.Diffuse,0.5f,0.8f,0.5f,1));
 							//pumpkinIter.remove();
 							//pumpRemoved = true;
+							
+							//Increment pumpkin killed counter
+							var.kills++;
 							continue;
 						}
 						continue;
@@ -868,9 +889,10 @@ public class Tts implements ApplicationListener {
 			sprControlLeft.draw(spriteBatch);
 			sprControlRight.draw(spriteBatch);
 			
-			bmfGameUi.draw(spriteBatch, "Power", 10, var.h - 10);
-			bmfGameUi.draw(spriteBatch, "Skill", 10, var.h - 40);
-			bmfGameUi.draw(spriteBatch, "Level", 10, var.h - 70);
+			calculateLevel();
+			bmfGameUi.draw(spriteBatch, "Score " + var.score, 10, var.h - 10);
+			bmfGameUi.draw(spriteBatch, "Distance " + Math.round(var.distance * 100) / 100f, 10, var.h - 40);
+			bmfGameUi.draw(spriteBatch, "Lv. " + var.level, 10, var.h - 70);
 			
 			spriteBatch.end();
 			
@@ -909,7 +931,7 @@ public class Tts implements ApplicationListener {
 			blnTitleCompleted = false;
 			blnShowTitle = true;
 			
-			vecCamMenuFocus = new Vector3(0,-12,2.5f);
+			vecCamMenuFocus = new Vector3(0,-12,3f);
 			vecCamGameFocus = new Vector3(0,0,0);
 			
 			sprTitle = new Sprite(var.assets.get("2d/title.png", Texture.class));
