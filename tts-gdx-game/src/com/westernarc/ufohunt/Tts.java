@@ -8,7 +8,10 @@ import com.badlogic.gdx.ApplicationListener;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.Input;
 import com.badlogic.gdx.Input.Keys;
+import com.badlogic.gdx.Preferences;
 import com.badlogic.gdx.assets.AssetManager;
+import com.badlogic.gdx.audio.Music;
+import com.badlogic.gdx.files.FileHandle;
 import com.badlogic.gdx.graphics.Color;
 import com.badlogic.gdx.graphics.GL10;
 import com.badlogic.gdx.graphics.OrthographicCamera;
@@ -70,8 +73,12 @@ public class Tts implements ApplicationListener {
 		static float distance; //This is the distance the player has travelled forwards
 		static int kills; //Number of pumpkins killed; count on shooting them down
 		static int score;
+		static int hiscore;
 		
 		final static float baseGroundSpeed = -200f; //Base speed of ground and pumpkin scrolling
+		
+		static Preferences prefs;
+		static Music musBgm;
 	}
 	
 	static class fadefilter {
@@ -93,10 +100,11 @@ public class Tts implements ApplicationListener {
 
 	Lights litGround;
 	
+	ModelInstance mdiMoon;
 	ModelInstance mdiSky;
 	Model mdlGround;
 	GameObject[] objGround;
-	final int numGround = 3;
+	final int numGround = 4;
 	final int numGroundLength = 1200;
 	Model cube;
 	Model mdlUfoR;
@@ -131,6 +139,7 @@ public class Tts implements ApplicationListener {
 		var.assets.load("3d/player.g3dj", Model.class);
 		var.assets.load("3d/ground.g3dj", Model.class);
 		var.assets.load("3d/sky.g3dj", Model.class);
+		var.assets.load("3d/moon.g3dj", Model.class);
 		var.assets.load("3d/cube.g3dj", Model.class);
 		var.assets.load("3d/ufoR.g3dj", Model.class);
 		var.assets.load("3d/pumpkinO.g3dj", Model.class);
@@ -141,6 +150,9 @@ public class Tts implements ApplicationListener {
 		var.assets.load("2d/ccw.png", Texture.class);
 		var.assets.load("2d/title.png", Texture.class);
 		var.assets.load("2d/filter.png", Texture.class);
+		var.assets.load("2d/Bimbo32.fnt", BitmapFont.class);
+		
+		var.assets.load("audio/Circumspection.mp3", Music.class);
 		fadefilter.fltFilterAlpha = 1;
 		
 		var.state = var.STATES.LOAD;
@@ -169,7 +181,9 @@ public class Tts implements ApplicationListener {
 	private void doneLoading() {
 		Model mdlPlayer = var.assets.get("3d/player.g3dj", Model.class);
 		mdiPlayer = new ModelInstance(mdlPlayer);
+		//mdiPlayer.materials.first().set(new ColorAttribute(ColorAttribute.Diffuse, 1,1,1,1));
 		player.mdi = mdiPlayer;
+		
 		
 		animController = new AnimationController(mdiPlayer);
 		animController.animate("up", -1, 1f, null, 0.2f);
@@ -178,13 +192,20 @@ public class Tts implements ApplicationListener {
 		Model mdlSky = var.assets.get("3d/sky.g3dj", Model.class);
 		mdiSky = new ModelInstance(mdlSky);
 		//Translate sky
-		mdiSky.transform.translate(-400,140,-340);
+		mdiSky.materials.first().set(new ColorAttribute(ColorAttribute.Diffuse, 1,1,1,1));
+		
+		Model mdlMoon = var.assets.get("3d/moon.g3dj", Model.class);
+		mdiMoon = new ModelInstance(mdlMoon);
+		//Translate sky
+		mdiMoon.transform.translate(-400,140,-340);
+		mdiMoon.materials.first().set(new ColorAttribute(ColorAttribute.Diffuse, 1,1,1,1));
 		
 		Model mdlGround = var.assets.get("3d/ground.g3dj", Model.class);
 		objGround = new GameObject[numGround];
 		for(int i = 0; i < numGround; i++) {
 			objGround[i] = new GameObject();
 			objGround[i].mdi = new ModelInstance(mdlGround);
+			objGround[i].mdi.materials.first().set(new ColorAttribute(ColorAttribute.Diffuse, 1,1,1,1));
 			objGround[i].translate(0,0,i * numGroundLength);
 			objGround[i].behaviours.add(groundSpeed);
 		}
@@ -199,6 +220,9 @@ public class Tts implements ApplicationListener {
 		
 		fadefilter.sprFilter = new Sprite(var.assets.get("2d/filter.png", Texture.class));
 		fadefilter.sprFilter.scale(var.h);
+		
+		var.musBgm = var.assets.get("audio/Circumspection.mp3", Music.class);
+		var.musBgm.play();
 	}
 	
 	@Override
@@ -232,12 +256,14 @@ public class Tts implements ApplicationListener {
 			Gdx.gl.glClear(GL10.GL_COLOR_BUFFER_BIT | GL10.GL_DEPTH_BUFFER_BIT);
 			animController.update(var.tpf);
 			modelBatch.begin(cam);
+			modelBatch.render(mdiMoon);
 			modelBatch.render(mdiSky);
+			mdiSky.transform.rotate(Vector3.Y, var.tpf);
 			for(GameObject grndInstance : objGround) {
 				modelBatch.render(grndInstance.mdi, litGround);
 				if(!var.flgDeathFreeze) grndInstance.update(var.tpf);
 				//reset ground position if it goes too far
-				if(grndInstance.pos.z < -numGroundLength){
+				if(grndInstance.pos.z < -numGroundLength * 1.5){
 					grndInstance.translate(0,0,numGroundLength * numGround);
 				}
 			}
@@ -332,14 +358,23 @@ public class Tts implements ApplicationListener {
 			cam.position.set(0, -19, 18);
 			cam.lookAt(Vector3.Z);
 			cam.near = 0.1f;
-			cam.far = 1600f;
+			cam.far = 2000f;
 			cam.update();
 			
-			bmfGameUi = new BitmapFont();
 			
+			var.prefs = Gdx.app.getPreferences("gameprefs");
+            if(var.prefs.getInteger("hiscore", 0) == 0) {
+                var.prefs.putInteger("hiscore", 0);
+	        }
+	        var.prefs.flush();
+	        var.hiscore = var.prefs.getInteger("hiscore",0);
+	        
+			bmfGameUi = var.assets.get("2d/Bimbo32.fnt");
+			//bmfGameUi.setScale(2);
 			sprControlLeft = new Sprite(var.assets.get("2d/cw.png", Texture.class));
 			sprControlRight = new Sprite(var.assets.get("2d/ccw.png", Texture.class));
 			sprControlRight.setPosition(var.w - sprControlRight.getWidth(), 0);
+			
 			reinit();
 		}
 		public void reinit() {
@@ -373,6 +408,11 @@ public class Tts implements ApplicationListener {
 			var.level = 1;
 			var.kills = 0;
 			var.score = 0;
+            if(var.prefs.getInteger("hiscore", 0) < var.hiscore) {
+                var.prefs.putInteger("hiscore", var.hiscore);
+	        }
+	        var.prefs.flush();
+	        var.hiscore = var.prefs.getInteger("hiscore",0);
 		}
 		public void playerFire() {
 			if(gtime[SHOT] > shotCooldown) {
@@ -423,23 +463,25 @@ public class Tts implements ApplicationListener {
 		}
 		private void calculateLevel() {
 			//Formula for level: Based on score (from kills), distance, and phases cleared
-			var.level = var.kills/10 + Math.round(var.distance)/60 + var.phase;
-			var.score = var.kills + Math.round(var.distance) + var.phase * 1000;
+			var.level = Math.round(var.score / 150f);
+			var.score = var.kills*10 + Math.round(var.distance * 4);
 		}
 		public void switchState(int nextState) {
 			resetPvars();
 			estate = nextState;
-			
+			if(nextState % 5 == 0) estate++;
 			//Every time state changes, add to phase
 			var.phase++;
 			//Level up only
 		}
 		//Choose next state based on level
 		public void nextState() {
-			switchState(chance(1,Math.max(var.level, 6)));
+			if(var.phase % 5 == 0) 
+				switchState(BOSS);
+			else
+				switchState(chance(1,Math.min(var.level, 6)));
 		}
 		public void spawn(float tpf) {
-			System.out.println(estate);
 			//spawn bullets
 			switch(estate) {
 			case RANDOM:
@@ -497,11 +539,11 @@ public class Tts implements ApplicationListener {
 				}
 				
 				if(ptime[2] > 0.05f) {					
-					addPumpkin(mdlPumpkin, ptime[0], 3, groundSpeed);				
-					addPumpkin(mdlPumpkin, ptime[0] + 5, 3, groundSpeed);
+					addPumpkin(mdlPumpkin, ptime[0], 3);				
+					addPumpkin(mdlPumpkin, ptime[0] + 5, 3);
 					
-					addPumpkin(mdlPumpkin, ptime[0] + 32, 3, groundSpeed);				
-					addPumpkin(mdlPumpkin, ptime[0] + 35, 3, groundSpeed);
+					addPumpkin(mdlPumpkin, ptime[0] + 32, 3);				
+					addPumpkin(mdlPumpkin, ptime[0] + 35, 3);
 					ptime[2] = 0;
 				}
 				
@@ -512,6 +554,7 @@ public class Tts implements ApplicationListener {
 				//2: spawn interval 1
 				//3: spawn interval 2
 				ptime[0] += tpf * 10f;
+				ptime[1] += tpf;
 				ptime[2] += tpf;
 				float angles = 16f;
 				int gap = chance(0,15);
@@ -523,7 +566,10 @@ public class Tts implements ApplicationListener {
 					}
 					ptime[2] = 0;
 				}
-				
+				if(ptime[1] > 10) {
+					if(Math.random() > 0.5) nextState();
+					ptime[1] -= 2;
+				}
 				break;
 			case WEDGE:
 				//0: angle 1
@@ -531,6 +577,7 @@ public class Tts implements ApplicationListener {
 				//2: spawn interval 1
 				//3: spawn interval 2
 				ptime[0] += tpf;
+				ptime[3] += tpf;
 				ptime[4] += tpf;
 				ptime[1] += tpf * 9;
 				ptime[2] -= tpf * 9;
@@ -552,6 +599,11 @@ public class Tts implements ApplicationListener {
 						pflag[0] = !pflag[0];
 					}
 					ptime[4] = 0;
+				}
+				if(ptime[3] > 10) {
+					//After 15 seconds, 50% chance to end phase
+					if(Math.random() > 0.5) nextState();
+					ptime[1] -= 2;
 				}
 				break;
 			case TUNNEL:
@@ -578,7 +630,6 @@ public class Tts implements ApplicationListener {
 					ptime[0] = 0;
 				}
 				
-				System.out.println(ptime[2]);
 				if(ptime[1] > 0.15f) {
 					if(ptime[3] > ptime[4]) ptime[3]--;
 					else if(ptime[3] < ptime[4]) ptime[3]++;
@@ -658,7 +709,7 @@ public class Tts implements ApplicationListener {
 						Behaviour b = new Behaviour() {
 							@Override
 							public void update(float tpf) {
-								modPos.set((float)Math.cos(parent.polpos.z * 3.1415f/200f) * 45, 0, -200);
+								modPos.set((float)Math.cos(parent.polpos.z * 3.1415f/100f) * 45, 0, -100);
 							}
 						};
 						p1.addBehaviour(b);
@@ -812,7 +863,7 @@ public class Tts implements ApplicationListener {
 				
 
 				//Test each ufo for collision with player
-				/*
+				
 				if(!var.flgDead && curPumpkin.boxCollides(player, 2)) {
 					pumpkinIter.remove();
 					//Player hit
@@ -824,7 +875,7 @@ public class Tts implements ApplicationListener {
 						//player.acc.scl(0);
 					}
 					continue;
-				}*/
+				}
 				
 				shotIter = shots.iterator();
 				while(shotIter.hasNext()) {
@@ -890,9 +941,16 @@ public class Tts implements ApplicationListener {
 			sprControlRight.draw(spriteBatch);
 			
 			calculateLevel();
-			bmfGameUi.draw(spriteBatch, "Score " + var.score, 10, var.h - 10);
-			bmfGameUi.draw(spriteBatch, "Distance " + Math.round(var.distance * 100) / 100f, 10, var.h - 40);
-			bmfGameUi.draw(spriteBatch, "Lv. " + var.level, 10, var.h - 70);
+			bmfGameUi.draw(spriteBatch, var.score + "p", 10, var.h - 10);
+			
+			if(var.score > var.hiscore) {
+				var.hiscore = var.score;
+			}
+			bmfGameUi.setScale(0.5f);
+			bmfGameUi.draw(spriteBatch, "hiscore " + var.hiscore + "p", 10, var.h - 40);
+			bmfGameUi.setScale(1);
+			String levelString = "Lv. " + var.level;
+			bmfGameUi.draw(spriteBatch, levelString, var.w - bmfGameUi.getBounds(levelString).width - 10, var.h - 10);
 			
 			spriteBatch.end();
 			
@@ -957,7 +1015,7 @@ public class Tts implements ApplicationListener {
 					fltCamLerpValue = 1;
 				}
 				cam.position.lerp(vecCamMenuPos, fltCamLerpValue);
-				cam.up.set(vecCamMenuUp);
+				cam.up.lerp(vecCamMenuUp, fltCamLerpValue);
 				cam.lookAt(vecCamMenuFocus);
 			} else {
 				if(animController.current.animation.id != "up"){
@@ -968,7 +1026,7 @@ public class Tts implements ApplicationListener {
 				
 				if(fltCamLerpValue + fltCamLerpGameRate < 1) fltCamLerpValue += fltCamLerpGameRate; else fltCamLerpValue = 1;
 				cam.position.lerp(vecCamGamePos, fltCamLerpValue);
-				cam.up.set(Vector3.Y);
+				cam.up.lerp(Vector3.Y, fltCamLerpValue);
 				cam.lookAt(vecCamMenuFocus.lerp(vecCamGameFocus, fltCamLerpValue));
 				if(fltCamLerpValue >= 0.03f) {
 					//Camera is done transitioning; Menu state is over
