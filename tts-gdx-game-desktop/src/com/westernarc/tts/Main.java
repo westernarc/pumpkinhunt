@@ -7,7 +7,7 @@ import com.westernarc.ufohunt.Tts;
 public class Main {
 	public static void main(String[] args) {
 		LwjglApplicationConfiguration cfg = new LwjglApplicationConfiguration();
-		cfg.title = "tts-gdx-game";
+		cfg.title = "Pumpkin Hunt!";
 		cfg.useGL20 = true;
 		cfg.width = 640;
 		cfg.height = 960;

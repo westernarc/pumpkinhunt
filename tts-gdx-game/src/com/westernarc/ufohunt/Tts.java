@@ -79,6 +79,9 @@ public class Tts implements ApplicationListener {
 		
 		static Preferences prefs;
 		static Music musBgm;
+		
+		static ColorAttribute cabRed;
+		static ColorAttribute cabWhite;
 	}
 	
 	static class fadefilter {
@@ -110,6 +113,7 @@ public class Tts implements ApplicationListener {
 	Model mdlUfoR;
 	Model mdlShot;
 	Model mdlPumpkin;
+	Model mdlBoss;
 	Model mdlBullet;
 	ArrayList<ModelInstance> instances;
 	ArrayList<GameObject> arrPumpkins;
@@ -143,7 +147,8 @@ public class Tts implements ApplicationListener {
 		var.assets.load("3d/cube.g3dj", Model.class);
 		var.assets.load("3d/ufoR.g3dj", Model.class);
 		var.assets.load("3d/pumpkinO.g3dj", Model.class);
-		var.assets.load("3d/shot.g3dj", Model.class);
+		var.assets.load("3d/boss.g3dj", Model.class);
+		var.assets.load("3d/shotR.g3dj", Model.class);
 		var.assets.load("3d/bulletG.g3dj", Model.class);
 		var.assets.load("2d/tex.png", Texture.class);
 		var.assets.load("2d/cw.png", Texture.class);
@@ -171,6 +176,8 @@ public class Tts implements ApplicationListener {
 		
 		groundSpeed = new SimpleBehaviour(0,0,var.baseGroundSpeed);
 		
+		var.cabRed = new ColorAttribute(ColorAttribute.Diffuse,1,0.5f,0.5f,1);
+		var.cabWhite = new ColorAttribute(ColorAttribute.Diffuse, 1, 1, 1, 1);
 		recreate();
 	}
 
@@ -212,8 +219,9 @@ public class Tts implements ApplicationListener {
 		
 		cube = var.assets.get("3d/cube.g3dj", Model.class);
 		mdlUfoR = var.assets.get("3d/ufoR.g3dj", Model.class);
-		mdlShot = var.assets.get("3d/shot.g3dj", Model.class);
+		mdlShot = var.assets.get("3d/shotR.g3dj", Model.class);
 		mdlPumpkin = var.assets.get("3d/pumpkinO.g3dj", Model.class);
+		mdlBoss = var.assets.get("3d/boss.g3dj", Model.class);
 		mdlBullet = var.assets.get("3d/bulletG.g3dj", Model.class);
 		stateMenu.init();
 		stateGame.init();
@@ -384,7 +392,7 @@ public class Tts implements ApplicationListener {
 			shots = new ArrayList<GameObject>();
 			
 			//Emitter state.  Defaults to RANDOM.
-			estate = SPIRAL2;
+			estate = BOSS;
 			//Initialize array of pattern timer temp variables
 			gtime = new float[64];
 			resetPvars();
@@ -399,6 +407,8 @@ public class Tts implements ApplicationListener {
 			
 			player.reset();
 			player.behaviours.removeValue(groundSpeed, true);
+			player.active = true;
+			player.mdi.materials.first().set(var.cabWhite);
 			var.flgDead = false;
 			/*
 			var.flgDead = false;
@@ -663,7 +673,7 @@ public class Tts implements ApplicationListener {
 				break;
 			case BOSS:
 				if(!pflag[4] ) {
-					GameObject boss = addPumpkin(mdlPumpkin, 0, 10);
+					GameObject boss = addPumpkin(mdlBoss, 0, 10);
 					boss.behaviours.clear();
 					//Make behaviour that slows down and stops at 200f Z
 					boss.addBehaviour(new Behaviour() {
@@ -672,10 +682,12 @@ public class Tts implements ApplicationListener {
 						}
 						@Override
 						public void update(float tpf) {
-							if(parent.pos.z > 200) {
-								modPos.set(0,0,-((parent.pos.z - 200f) / 200f)*300);
-							} else {
-								modPos.set(0,0,0);
+							if(!var.flgDeathFreeze) {
+								if(parent.pos.z > 200) {
+									modPos.set(0,0,-((parent.pos.z - 200f) / 200f)*300);
+								} else {
+									modPos.set(0,0,0);
+								}
 							}
 						}
 					});
@@ -703,25 +715,25 @@ public class Tts implements ApplicationListener {
 					if(ptime[4] > 1) {
 						Vector3 bossVec = boss.polpos;
 						
-						GameObject p1 = addPumpkin(mdlPumpkin, 0, 5);
+						GameObject p1 = addPumpkin(mdlPumpkin, 0, 2);
 						p1.polpos.set(bossVec);
 						p1.behaviours.clear();
 						Behaviour b = new Behaviour() {
 							@Override
 							public void update(float tpf) {
-								modPos.set((float)Math.cos(parent.polpos.z * 3.1415f/100f) * 45, 0, -100);
+								modPos.set((float)Math.cos(parent.polpos.z * 3.1415f/200f) * 5, 0, -50);
 							}
 						};
 						p1.addBehaviour(b);
 						setTracking(p1);
 						
-						GameObject p2 = addPumpkin(mdlPumpkin, 0, 5);
+						GameObject p2 = addPumpkin(mdlPumpkin, 0, 2);
 						p2.polpos.set(bossVec);
 						p2.behaviours.clear();
 						Behaviour b2 = new Behaviour() {
 							@Override
 							public void update(float tpf) {
-								modPos.set(-(float)Math.cos(parent.polpos.z * 3.1415f/200f) * 45, 0, -200);
+								modPos.set(-(float)Math.cos(parent.polpos.z * 3.1415f/200f) * 5, 0, -50);
 							}
 						};
 						p2.addBehaviour(b2);
@@ -849,6 +861,7 @@ public class Tts implements ApplicationListener {
 			Iterator<GameObject> shotIter;
 			GameObject curPumpkin;
 			GameObject curShot;
+			System.out.println(tpf);
 			while(pumpkinIter.hasNext()) {
 				curPumpkin = pumpkinIter.next();
 				
@@ -858,14 +871,16 @@ public class Tts implements ApplicationListener {
 					continue;
 				}
 				
-				curPumpkin.update(tpf);
+				if(!var.flgDeathFreeze) curPumpkin.update(tpf);
 				modelBatch.render(curPumpkin.mdi, litGround);
-				
 
 				//Test each ufo for collision with player
 				
-				if(!var.flgDead && curPumpkin.boxCollides(player, 2)) {
-					pumpkinIter.remove();
+				if(!var.flgDead && curPumpkin.boxCollides(player, 2) && curPumpkin.active) {
+					//pumpkinIter.remove();
+					curPumpkin.mdi.materials.first().set(var.cabRed);
+					player.mdi.materials.first().set(var.cabRed);
+					curPumpkin.active = false;
 					//Player hit
 					if(!var.flgDeathFreeze) {
 						var.flgDeathFreeze = true;
@@ -912,7 +927,7 @@ public class Tts implements ApplicationListener {
 			shotIter = shots.iterator();
 			while(shotIter.hasNext()) {
 				curShot = shotIter.next();
-				curShot.update(tpf);
+				if(!var.flgDeathFreeze) curShot.update(tpf);
 				modelBatch.render(curShot.mdi);
 				
 				//If the bullet's position z is over 500 kill it

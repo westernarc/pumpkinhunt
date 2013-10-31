@@ -17,6 +17,7 @@ public class GameObject {
 	public int maxHp;
 	public int dmg;//Damage object deals
 	public boolean invuln;
+	public boolean active;
 	public void takeDamage(int dmg) {
 		if(!invuln) {
 			hp -= dmg;
@@ -67,6 +68,7 @@ public class GameObject {
 		//Have at least 1 hp for every object
 		hp = 1;
 		invuln = false;
+		active = true;
 	}
 	//Create a game object thats polar
 	public GameObject(boolean polar, float radius) {

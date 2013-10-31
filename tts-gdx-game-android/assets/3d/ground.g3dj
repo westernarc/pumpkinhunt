@@ -5259,21 +5259,16 @@
 	], 
 	"materials": [
 		{
-			"id": "Material__night_png_002", 
+			"id": "Material_001__night_png_001", 
 			"diffuse": [ 0.800000,  0.800000,  0.800000], 
 			"emissive": [ 0.800000,  0.800000,  0.800000], 
 			"textures": [
 				{
-					"id": "night_png_002", 
+					"id": "night_png_001", 
 					"filename": "night.png", 
 					"type": "DIFFUSE"
 				}
 			]
-		}, 
-		{
-			"id": "Material", 
-			"diffuse": [ 0.800000,  0.800000,  0.800000], 
-			"emissive": [ 0.800000,  0.800000,  0.800000]
 		}, 
 		{
 			"id": "Material_001__night_png", 
@@ -5288,12 +5283,17 @@
 			]
 		}, 
 		{
-			"id": "Material_001__night_png_001", 
+			"id": "Material", 
+			"diffuse": [ 0.800000,  0.800000,  0.800000], 
+			"emissive": [ 0.800000,  0.800000,  0.800000]
+		}, 
+		{
+			"id": "Material__night_png_002", 
 			"diffuse": [ 0.800000,  0.800000,  0.800000], 
 			"emissive": [ 0.800000,  0.800000,  0.800000], 
 			"textures": [
 				{
-					"id": "night_png_001", 
+					"id": "night_png_002", 
 					"filename": "night.png", 
 					"type": "DIFFUSE"
 				}
